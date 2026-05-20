@@ -2,36 +2,43 @@
 
 Marketplace privee Claude Code de AVS Technologies. Plugins partages a toute l'equipe AVS pour avoir une experience uniforme Claude Code (statusline, MCP, hooks, skills) sur tous les postes et tous les repos.
 
-## Install — Zero action manuelle (recommande)
+## Install
 
-Coller ces 2 cles dans `~/.claude/settings.json` (sous Windows : `C:\Users\<toi>\.claude\settings.json`) :
+⚠️ **Limitation Anthropic (mai 2026)** : la clé `statusLine` n'est PAS supportee dans le `settings.json` d'un plugin. Le plugin distribue donc le script mais l'utilisateur doit declarer `statusLine` dans son `~/.claude/settings.json` perso (cf. plugin README).
+
+### 1. Coller dans `~/.claude/settings.json`
 
 ```json
 {
   "extraKnownMarketplaces": {
     "avs-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "avstechfr/claude-plugins"
-      }
+      "source": { "source": "github", "repo": "avstechfr/claude-plugins" }
     }
   },
   "enabledPlugins": {
     "avs-statusline@avs-plugins": true
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.0.0/bin/statusline-dispatch.sh"
   }
 }
 ```
 
-(Si `extraKnownMarketplaces` ou `enabledPlugins` existe deja, fusionner les cles au lieu d'ecraser.)
+(Fusionner les cles si elles existent deja.)
 
-Au prochain `claude`, le marketplace est connu automatiquement et le plugin s'installe. Aucun `/plugin marketplace add` ni `/plugin install` a taper. La premiere fois, Claude Code demande un consentement "Trust marketplace avstechfr/claude-plugins?" -> Yes, c'est tout.
+### 2. Relancer Claude Code (`exit` puis `claude`)
 
-## Install — Fallback manuel (si tu prefers les slash commands)
+Le plugin est telecharge automatiquement, et la statusline pointe vers son script. Aucun `/plugin marketplace add` ni `/plugin install` a taper.
+
+## Install — Fallback manuel via slash commands
 
 ```
 /plugin marketplace add avstechfr/claude-plugins
 /plugin install avs-statusline
 ```
+
+(Faut quand meme ajouter la cle `statusLine` au settings perso, voir plugin README.)
 
 ## Plugins dispo
 

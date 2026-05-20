@@ -16,12 +16,43 @@ Conventions :
 
 ## Install
 
-```
-/plugin marketplace add avstechfr/claude-plugins
-/plugin install avs-statusline
+**Limitation Anthropic (mai 2026)** : la clé `statusLine` n'est PAS supportee dans le `settings.json` d'un plugin (seules `agent` et `subagentStatusLine` le sont). Le plugin distribue donc le script, mais l'utilisateur doit declarer `statusLine` dans son `~/.claude/settings.json` perso.
+
+### Etape 1 — Activer le plugin (auto via `extraKnownMarketplaces`)
+
+Dans `~/.claude/settings.json` :
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "avs-plugins": {
+      "source": { "source": "github", "repo": "avstechfr/claude-plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "avs-statusline@avs-plugins": true
+  }
+}
 ```
 
-Au prochain demarrage de Claude Code (`exit` puis `claude`), la status line s'affiche en bas du terminal en permanence.
+Au prochain `claude`, le plugin est telecharge dans `~/.claude/plugins/cache/avs-plugins/avs-statusline/<version>/`.
+
+### Etape 2 — Declarer la statusLine (manuel, une fois)
+
+Ajouter aussi dans `~/.claude/settings.json` :
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.0.0/bin/statusline-dispatch.sh"
+  }
+}
+```
+
+Au prochain demarrage de Claude Code, la status line s'affiche.
+
+⚠️ Le numero de version `1.0.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
 
 ## Detail technique
 
