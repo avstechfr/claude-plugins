@@ -13,6 +13,15 @@
       "author": {
         "name": "AVS Technologies"
       }
+    },
+    {
+      "name": "avs-mcp-agent-chat",
+      "source": "./plugins/avs-mcp-agent-chat",
+      "description": "MCP server agent-chat : discussion entre instances Claude Code (chat_send / chat_recv / chat_rooms / chat_whoami). Backend local par defaut, HTTP intranet en option.",
+      "version": "1.0.0",
+      "author": {
+        "name": "AVS Technologies"
+      }
     }
   ]
 }

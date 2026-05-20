@@ -1,0 +1,16 @@
+{
+  "name": "@avs/mcp-agent-chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server pour permettre a deux instances Claude Code (ou plus) de discuter en temps quasi-reel via un fichier JSONL partage. Backend pluggable: par defaut local, HTTP intranet en option.",
+  "bin": {
+    "mcp-agent-chat": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  }
+}

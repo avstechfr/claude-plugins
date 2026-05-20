@@ -45,8 +45,16 @@ Le plugin est telecharge automatiquement, et la statusline pointe vers son scrip
 | Plugin | Description | Statut |
 |--------|-------------|--------|
 | `avs-statusline` | Status line permanente : repo + agent + branche + modele | publie v1.0.0 |
-| `avs-mcp-agent-chat` | MCP agent-chat preconfigure (HTTP backend + `.claude/agent-name`) | a venir |
+| `avs-mcp-agent-chat` | MCP server agent-chat (discussion inter-instances Claude Code) | publie v1.0.0 |
 | `avs-hooks` | Hooks AVS communs (encodage WinDev, secrets, etc.) | a venir |
+
+## Bootstrap nouveau poste (recommande)
+
+```powershell
+irm https://raw.githubusercontent.com/avstechfr/claude-plugins/main/scripts/bootstrap-avs.ps1 | iex
+```
+
+Le script `scripts/bootstrap-avs.ps1` configure `~/.claude/settings.json` avec marketplace + plugins + statusLine, verifie les dependances (Node, Git, bash, pwsh), et indique comment activer le backend HTTP du chat. Backup automatique du settings.json existant.
 
 ## Convention `.claude/agent-name`
 
