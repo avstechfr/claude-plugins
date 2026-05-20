@@ -2,14 +2,36 @@
 
 Marketplace privee Claude Code de AVS Technologies. Plugins partages a toute l'equipe AVS pour avoir une experience uniforme Claude Code (statusline, MCP, hooks, skills) sur tous les postes et tous les repos.
 
-## Install (cote tech AVS, une fois par poste)
+## Install — Zero action manuelle (recommande)
+
+Coller ces 2 cles dans `~/.claude/settings.json` (sous Windows : `C:\Users\<toi>\.claude\settings.json`) :
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "avs-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "avstechfr/claude-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "avs-statusline@avs-plugins": true
+  }
+}
+```
+
+(Si `extraKnownMarketplaces` ou `enabledPlugins` existe deja, fusionner les cles au lieu d'ecraser.)
+
+Au prochain `claude`, le marketplace est connu automatiquement et le plugin s'installe. Aucun `/plugin marketplace add` ni `/plugin install` a taper. La premiere fois, Claude Code demande un consentement "Trust marketplace avstechfr/claude-plugins?" -> Yes, c'est tout.
+
+## Install — Fallback manuel (si tu prefers les slash commands)
 
 ```
 /plugin marketplace add avstechfr/claude-plugins
 /plugin install avs-statusline
 ```
-
-Au prochain demarrage de Claude Code (`exit` puis `claude`), les plugins installes sont actifs.
 
 ## Plugins dispo
 
