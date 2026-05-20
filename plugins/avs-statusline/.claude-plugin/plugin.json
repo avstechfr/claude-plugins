@@ -1,0 +1,9 @@
+{
+  "name": "avs-statusline",
+  "description": "Status line Claude Code AVS : nom du repo, agent (.claude/agent-name), branche Git, modele actif. Windows PowerShell + Mac/Linux Bash.",
+  "version": "1.0.0",
+  "author": {
+    "name": "AVS Technologies",
+    "url": "https://avs-technologies.fr"
+  }
+}
