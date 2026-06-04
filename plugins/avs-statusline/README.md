@@ -1,18 +1,36 @@
 # avs-statusline
 
-Status line Claude Code AVS : nom du repo, agent (`.claude/agent-name`), branche Git, modele actif.
+Status line Claude Code AVS : sujet en cours, nom du repo, agent (`.claude/agent-name`), branche Git, modele actif.
 
 ## Rendu
 
 ```
-📁 logics · 🤖 automate · 🌿 main · ✨ Opus 4.7 (1M context)
+🎯 #133 Rhoméo Décoration · 📁 avs · 🤖 automate · 🌿 main · ✨ Opus 4.8 (1M context)
 ```
 
+Le `🎯` n'apparait que si un sujet courant est defini (voir plus bas) ; sinon la ligne demarre a `📁`.
+
 Conventions :
+- **Sujet** : contenu de `~/.claude/sujets/<repo-key>.txt` (voir [Sujet en cours](#sujet-en-cours))
 - **Repo** : basename de `git rev-parse --show-toplevel`
 - **Agent** : contenu de `.claude/agent-name` a la racine du repo (gitignore, propre a chaque clone). Exemple : `automate`, `pad`, `cloud`
 - **Branche** : sortie de `git rev-parse --abbrev-ref HEAD`
 - **Modele** : champ `model.display_name` du JSON Claude Code
+
+## Sujet en cours
+
+La statusline affiche le sujet/dossier AVS sur lequel on travaille, lu depuis un fichier texte cote workstation :
+
+```
+~/.claude/sujets/<repo-key>.txt
+```
+
+- **`<repo-key>`** = chemin absolu du repo (`git rev-parse --show-toplevel`) avec tout caractere non alphanumerique remplace par `_`.
+  Exemple : `C:\Users\Nicolas\Documents\github\avs` -> `C__Users_Nicolas_Documents_github_avs.txt`
+- **Contenu** : une ligne libre, en UTF-8 (sans BOM). Exemple : `#133 Rhoméo Décoration`
+- **Absent ou vide** : aucun `🎯` n'est affiche.
+
+Le fichier est ecrit par l'agent Claude quand on ouvre/change de sujet (il connait le numero + titre via l'API intranet). Le keying est **par repo** : toutes les fenetres ouvertes sur le meme repo partagent le sujet affiche.
 
 ## Install
 
@@ -45,14 +63,14 @@ Ajouter aussi dans `~/.claude/settings.json` :
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.0.0/bin/statusline-dispatch.sh"
+    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.1.0/bin/statusline-dispatch.sh"
   }
 }
 ```
 
 Au prochain demarrage de Claude Code, la status line s'affiche.
 
-⚠️ Le numero de version `1.0.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
+⚠️ Le numero de version `1.1.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
 
 ## Detail technique
 

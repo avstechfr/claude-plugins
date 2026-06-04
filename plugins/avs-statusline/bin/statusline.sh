@@ -30,4 +30,19 @@ if [ -n "$GIT_ROOT" ]; then
   [ -n "$B" ] && BRANCH="$B"
 fi
 
-printf "📁 %s · 🤖 %s · 🌿 %s · ✨ %s\n" "$PROJECT" "$AGENT" "$BRANCH" "$MODEL"
+# --- Sujet AVS en cours (~/.claude/sujets/<repo-key>.txt) ---
+# Ecrit par l'agent Claude quand on ouvre/change de sujet ; cle = chemin du repo
+# normalise ([^A-Za-z0-9] -> _). Fichier absent => rien d'affiche.
+SUJET=""
+KEY="${GIT_ROOT:-$CWD}"
+SAFE=$(printf '%s' "$KEY" | sed -E 's/[^A-Za-z0-9]/_/g')
+SUJET_FILE="$HOME/.claude/sujets/$SAFE.txt"
+if [ -f "$SUJET_FILE" ]; then
+  SUJET=$(tr -d '\r' < "$SUJET_FILE" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' | head -1)
+fi
+
+if [ -n "$SUJET" ]; then
+  printf "🎯 %s · 📁 %s · 🤖 %s · 🌿 %s · ✨ %s\n" "$SUJET" "$PROJECT" "$AGENT" "$BRANCH" "$MODEL"
+else
+  printf "📁 %s · 🤖 %s · 🌿 %s · ✨ %s\n" "$PROJECT" "$AGENT" "$BRANCH" "$MODEL"
+fi

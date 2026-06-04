@@ -51,4 +51,20 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not $branch) { $branch = "—" } else { $branch = $branch.Trim() }
 } catch {}
 
-Write-Host "📁 $projectName · 🤖 $agentName · 🌿 $branch · ✨ $model"
+# --- Sujet AVS en cours (~/.claude/sujets/<repo-key>.txt) ---
+# Ecrit par l'agent Claude quand on ouvre/change de sujet ; cle = chemin du repo
+# normalise ([^A-Za-z0-9] -> _). Fichier absent => rien d'affiche.
+$sujet = $null
+try {
+    $key = if ($gitRoot) { $gitRoot.Trim() } else { $cwd }
+    $safe = ($key -replace '[^A-Za-z0-9]', '_')
+    $sujetFile = Join-Path $env:USERPROFILE ".claude\sujets\$safe.txt"
+    if (Test-Path $sujetFile) {
+        $sujet = (Get-Content $sujetFile -Raw -Encoding UTF8).Trim()
+        if ([string]::IsNullOrWhiteSpace($sujet)) { $sujet = $null }
+    }
+} catch {}
+
+$line = "📁 $projectName · 🤖 $agentName · 🌿 $branch · ✨ $model"
+if ($sujet) { $line = "🎯 $sujet · " + $line }
+Write-Host $line
