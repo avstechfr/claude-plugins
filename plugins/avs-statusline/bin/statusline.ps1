@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 # AVS statusline (Windows PowerShell variant)
 # Reads Claude Code JSON from stdin, prints :
-#   📁 <repo> · 🤖 <agent> · 🌿 <branch> · ✨ <model>
+#   🎯 <sujet> · 📁 <repo> · 🤖 <agent> · 🌿 <branch> · ✨ <model>
 
 # Force UTF-8 output so emoji glyphs survive the pipe to Claude Code
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -20,18 +20,31 @@ $model = if ($input_data -and $input_data.model -and $input_data.model.display_n
     $input_data.model.display_name
 } else { "?" }
 
-# --- CWD from JSON (most reliable) ---
-$cwd = if ($input_data -and $input_data.cwd) { $input_data.cwd } else { (Get-Location).Path }
+# --- Ancre = repertoire du PROJET de la session (stable), pas le cwd courant ---
+# Le cwd derive des qu'on `cd` ailleurs (ex: commit dans un autre repo) ; workspace.project_dir
+# reste fixe sur le projet ouvert. On s'ancre dessus pour que la statusline reste coherente.
+$anchor = $null
+if ($input_data -and $input_data.workspace -and $input_data.workspace.project_dir) {
+    $anchor = $input_data.workspace.project_dir
+} elseif ($input_data -and $input_data.cwd) {
+    $anchor = $input_data.cwd
+} else {
+    $anchor = (Get-Location).Path
+}
 
 # --- Git project name (repo root basename) ---
 $projectName = "—"
 $gitRoot = $null
 try {
-    $gitRoot = & git -C $cwd rev-parse --show-toplevel 2>$null
+    $gitRoot = & git -C $anchor rev-parse --show-toplevel 2>$null
     if ($LASTEXITCODE -eq 0 -and $gitRoot) {
         $projectName = Split-Path -Leaf ($gitRoot.Trim())
     }
 } catch {}
+# Fallback : nom de repo fourni par Claude Code si git indisponible
+if ($projectName -eq "—" -and $input_data -and $input_data.workspace -and $input_data.workspace.repo -and $input_data.workspace.repo.name) {
+    $projectName = $input_data.workspace.repo.name
+}
 
 # --- Agent name (.claude/agent-name at repo root) ---
 $agentName = "—"
@@ -47,16 +60,16 @@ try {
 # --- Git branch ---
 $branch = "—"
 try {
-    $branch = & git -C $cwd rev-parse --abbrev-ref HEAD 2>$null
+    $branch = & git -C $anchor rev-parse --abbrev-ref HEAD 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $branch) { $branch = "—" } else { $branch = $branch.Trim() }
 } catch {}
 
 # --- Sujet AVS en cours (~/.claude/sujets/<repo-key>.txt) ---
-# Ecrit par l'agent Claude quand on ouvre/change de sujet ; cle = chemin du repo
-# normalise ([^A-Za-z0-9] -> _). Fichier absent => rien d'affiche.
+# Cle = chemin du projet (gitRoot si dispo, sinon l'ancre) normalise [^A-Za-z0-9] -> _.
+# Ecrit par l'agent Claude quand on ouvre/change de sujet. Absent => rien d'affiche.
 $sujet = $null
 try {
-    $key = if ($gitRoot) { $gitRoot.Trim() } else { $cwd }
+    $key = if ($gitRoot) { $gitRoot.Trim() } else { $anchor }
     $safe = ($key -replace '[^A-Za-z0-9]', '_')
     $sujetFile = Join-Path $env:USERPROFILE ".claude\sujets\$safe.txt"
     if (Test-Path $sujetFile) {

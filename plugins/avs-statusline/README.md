@@ -63,14 +63,14 @@ Ajouter aussi dans `~/.claude/settings.json` :
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.1.0/bin/statusline-dispatch.sh"
+    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.1.1/bin/statusline-dispatch.sh"
   }
 }
 ```
 
 Au prochain demarrage de Claude Code, la status line s'affiche.
 
-⚠️ Le numero de version `1.1.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
+⚠️ Le numero de version `1.1.1` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
 
 ## Detail technique
 
