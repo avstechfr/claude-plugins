@@ -1,0 +1,14 @@
+{
+  "name": "@avs/mcp-kb",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server base de connaissances AVS : kb_search / kb_get / kb_save / kb_link / kb_log contre l'API externe de l'intranet (intra.avstech.fr). Zero dependance.",
+  "bin": {
+    "mcp-kb": "./server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node smoke-test.mjs"
+  }
+}

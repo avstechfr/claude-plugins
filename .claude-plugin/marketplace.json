@@ -22,6 +22,15 @@
       "author": {
         "name": "AVS Technologies"
       }
+    },
+    {
+      "name": "avs-mcp-kb",
+      "source": "./plugins/avs-mcp-kb",
+      "description": "MCP server base de connaissances AVS : kb_search / kb_get / kb_save / kb_link / kb_log contre intra.avstech.fr. La KB comme outil natif : chercher avant d'agir, journaliser apres. Auth AVS_API_KEY ou ~/.avs/api_key.",
+      "version": "1.0.0",
+      "author": {
+        "name": "AVS Technologies"
+      }
     }
   ]
 }

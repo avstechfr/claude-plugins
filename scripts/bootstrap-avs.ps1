@@ -52,6 +52,7 @@ if (-not $Settings.ContainsKey('enabledPlugins')) {
 }
 $Settings['enabledPlugins']['avs-statusline@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-agent-chat@avs-plugins'] = $true
+$Settings['enabledPlugins']['avs-mcp-kb@avs-plugins'] = $true
 
 # --- 4. statusLine pointant vers le script du plugin (workaround Anthropic) ---
 $PluginVersion = "1.0.0"
