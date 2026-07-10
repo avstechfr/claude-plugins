@@ -5,14 +5,15 @@ Status line Claude Code AVS : sujet en cours, nom du repo, agent (`.claude/agent
 ## Rendu
 
 ```
-🎯 #133 Rhoméo Décoration · 📁 avs · 🤖 automate · 🌿 main · ✨ Opus 4.8 (1M context)
+🎯 #133 Rhoméo Décoration · 📁 avs · 📂 site-web/app · 🤖 automate · 🌿 main · ✨ Opus 4.8 (1M context)
 ```
 
 Le `🎯` n'apparait que si un sujet courant est defini (voir plus bas) ; sinon la ligne demarre a `📁`.
 
 Conventions :
-- **Sujet** : contenu de `~/.claude/sujets/<repo-key>.txt` (voir [Sujet en cours](#sujet-en-cours))
+- **Sujet** : contenu de `~/.claude/sujets/session-<session_id>.txt` ou `~/.claude/sujets/<repo-key>.txt` (voir [Sujet en cours](#sujet-en-cours))
 - **Repo** : basename de `git rev-parse --show-toplevel`
+- **Dossier courant** : chemin du cwd relatif a la racine du repo (`.` a la racine) ; hors repo git, basename du cwd
 - **Agent** : contenu de `.claude/agent-name` a la racine du repo (gitignore, propre a chaque clone). Exemple : `automate`, `pad`, `cloud`
 - **Branche** : sortie de `git rev-parse --abbrev-ref HEAD`
 - **Modele** : champ `model.display_name` du JSON Claude Code
@@ -67,7 +68,7 @@ Ajouter aussi dans `~/.claude/settings.json` :
 {
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.2.0/bin/statusline-dispatch.sh"
+    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.3.0/bin/statusline-dispatch.sh"
   }
 }
 ```
@@ -78,7 +79,7 @@ Ajouter aussi dans `~/.claude/settings.json` :
 {
   "statusLine": {
     "type": "command",
-    "command": "bash C:/Users/TON_USER/.claude/plugins/cache/avs-plugins/avs-statusline/1.2.0/bin/statusline-dispatch.sh"
+    "command": "bash C:/Users/TON_USER/.claude/plugins/cache/avs-plugins/avs-statusline/1.3.0/bin/statusline-dispatch.sh"
   }
 }
 ```
@@ -87,7 +88,7 @@ Sous Windows, Claude Code lance la commande via `cmd`, qui ne resout **pas** le 
 
 Au prochain demarrage de Claude Code, la status line s'affiche.
 
-⚠️ Le numero de version `1.2.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
+⚠️ Le numero de version `1.3.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
 
 ## Detail technique
 

@@ -1,7 +1,7 @@
 {
   "name": "avs-statusline",
-  "description": "Status line Claude Code AVS : sujet en cours (~/.claude/sujets/, par session ou par repo), nom du repo, agent (.claude/agent-name), branche Git, modele actif. Windows PowerShell + Mac/Linux Bash.",
-  "version": "1.2.0",
+  "description": "Status line Claude Code AVS : sujet en cours (~/.claude/sujets/, par session ou par repo), nom du repo, dossier courant, agent (.claude/agent-name), branche Git, modele actif. Windows PowerShell + Mac/Linux Bash.",
+  "version": "1.3.0",
   "author": {
     "name": "AVS Technologies",
     "url": "https://avs-technologies.fr"

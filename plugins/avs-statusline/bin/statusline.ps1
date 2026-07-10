@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 # AVS statusline (Windows PowerShell variant)
 # Reads Claude Code JSON from stdin, prints :
-#   🎯 <sujet> · 📁 <repo> · 🤖 <agent> · 🌿 <branch> · ✨ <model>
+#   🎯 <sujet> · 📁 <repo> · 📂 <dossier courant> · 🤖 <agent> · 🌿 <branch> · ✨ <model>
 
 # Force UTF-8 output so emoji glyphs survive the pipe to Claude Code
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -64,6 +64,34 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not $branch) { $branch = "—" } else { $branch = $branch.Trim() }
 } catch {}
 
+# --- Repertoire courant reel (peut differer de l'ancre projet si on a `cd` ailleurs) ---
+# Affiche par rapport a la racine du repo git (".", ou chemin relatif type "site-web/app").
+# Si hors repo git, affiche juste le nom du dossier courant.
+$cwd = if ($input_data -and $input_data.workspace -and $input_data.workspace.current_dir) {
+    $input_data.workspace.current_dir
+} elseif ($input_data -and $input_data.cwd) {
+    $input_data.cwd
+} else {
+    (Get-Location).Path
+}
+
+$relDir = "."
+try {
+    if ($gitRoot) {
+        $rootFull = (Resolve-Path $gitRoot.Trim()).Path.TrimEnd('\')
+        $cwdFull = (Resolve-Path $cwd).Path.TrimEnd('\')
+        if ($cwdFull -eq $rootFull) {
+            $relDir = "."
+        } elseif ($cwdFull.StartsWith($rootFull + '\')) {
+            $relDir = ($cwdFull.Substring($rootFull.Length + 1)) -replace '\\', '/'
+        } else {
+            $relDir = Split-Path -Leaf $cwdFull
+        }
+    } else {
+        $relDir = Split-Path -Leaf $cwd
+    }
+} catch {}
+
 # --- Sujet AVS en cours ---
 # Priorite 1 : ~/.claude/sujets/session-<session_id>.txt (par SESSION — plusieurs agents
 #              en parallele sur le meme repo ont chacun leur sujet).
@@ -90,6 +118,6 @@ try {
     }
 } catch {}
 
-$line = "📁 $projectName · 🤖 $agentName · 🌿 $branch · ✨ $model"
+$line = "📁 $projectName · 📂 $relDir · 🤖 $agentName · 🌿 $branch · ✨ $model"
 if ($sujet) { $line = "🎯 $sujet · " + $line }
 Write-Host $line
