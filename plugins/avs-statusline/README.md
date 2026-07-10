@@ -58,9 +58,15 @@ Dans `~/.claude/settings.json` :
 
 Au prochain `claude`, le plugin est telecharge dans `~/.claude/plugins/cache/avs-plugins/avs-statusline/<version>/`.
 
-### Etape 2 — Declarer la statusLine (manuel, une fois)
+### Etape 2 — Declarer la statusLine
 
-Ajouter aussi dans `~/.claude/settings.json` :
+**Recommande** : lancer le bootstrap, qui fait les etapes 1 ET 2 proprement (chemin absolu + launcher qui suit automatiquement la derniere version du plugin, plus besoin de retoucher settings.json aux mises a jour) :
+
+```powershell
+irm https://raw.githubusercontent.com/avstechfr/claude-plugins/main/scripts/bootstrap-avs.ps1 | iex
+```
+
+**Ou en manuel**, ajouter dans `~/.claude/settings.json` :
 
 **macOS / Linux :**
 

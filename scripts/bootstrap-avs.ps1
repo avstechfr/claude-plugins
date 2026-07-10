@@ -3,7 +3,9 @@
 # Configure Claude Code d'un nouveau poste AVS en une seule commande :
 #   - Cle extraKnownMarketplaces -> github.com/avstechfr/claude-plugins
 #   - Cle enabledPlugins -> avs-statusline + avs-mcp-agent-chat
-#   - Cle statusLine pointant vers ${PLUGIN}/bin/statusline-dispatch.sh
+#   - Cle statusLine pointant (chemin ABSOLU, jamais ~) vers un launcher
+#     ~/.claude/avs-statusline-launcher.sh qui suit automatiquement la derniere
+#     version du plugin en cache
 #     (workaround tant que Anthropic ne supporte pas statusLine en plugin settings)
 #
 # Usage (depuis n'importe ou) :
@@ -54,12 +56,34 @@ $Settings['enabledPlugins']['avs-statusline@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-agent-chat@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-kb@avs-plugins'] = $true
 
-# --- 4. statusLine pointant vers le script du plugin (workaround Anthropic) ---
-$PluginVersion = "1.0.0"
-$StatusLineCmd = "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/$PluginVersion/bin/statusline-dispatch.sh"
+# --- 4. statusLine via launcher stable (workaround Anthropic) ---
+# Deux pieges resolus ici :
+#   1. Sous Windows, Claude Code lance la commande statusLine via cmd qui ne resout PAS ~
+#      -> la commande echoue silencieusement et AUCUNE statusline ne s'affiche.
+#      On ecrit donc un chemin ABSOLU dans settings.json.
+#   2. Le chemin du cache contient le numero de version du plugin, qui casse a chaque release.
+#      Le launcher resout la DERNIERE version en cache a chaque execution :
+#      plus besoin de retoucher settings.json quand le plugin est mis a jour.
+$LauncherPath = Join-Path $ClaudeDir "avs-statusline-launcher.sh"
+$LauncherBash = @'
+#!/bin/bash
+# Launcher statusline AVS : delegue a la derniere version du plugin en cache.
+# Genere par bootstrap-avs.ps1 — ne pas editer, relancer le bootstrap pour regenerer.
+BASE="$HOME/.claude/plugins/cache/avs-plugins/avs-statusline"
+LATEST=$(ls -1 "$BASE" 2>/dev/null | sort -V 2>/dev/null | tail -1)
+[ -z "$LATEST" ] && LATEST=$(ls -1 "$BASE" 2>/dev/null | sort | tail -1)
+if [ -n "$LATEST" ]; then
+  exec bash "$BASE/$LATEST/bin/statusline-dispatch.sh"
+fi
+# Plugin pas encore telecharge (1er lancement) : ligne minimale
+cat > /dev/null
+printf 'AVS - plugin avs-statusline en cours d installation, relance Claude Code\n'
+'@
+[System.IO.File]::WriteAllText($LauncherPath, ($LauncherBash -replace "`r`n", "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
+$LauncherAbs = $LauncherPath -replace '\\', '/'
 $Settings['statusLine'] = @{
     type    = 'command'
-    command = $StatusLineCmd
+    command = "bash `"$LauncherAbs`""
 }
 
 # --- 5. Ecriture ---
