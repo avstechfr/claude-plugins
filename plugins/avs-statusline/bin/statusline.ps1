@@ -64,17 +64,29 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not $branch) { $branch = "—" } else { $branch = $branch.Trim() }
 } catch {}
 
-# --- Sujet AVS en cours (~/.claude/sujets/<repo-key>.txt) ---
-# Cle = chemin du projet (gitRoot si dispo, sinon l'ancre) normalise [^A-Za-z0-9] -> _.
+# --- Sujet AVS en cours ---
+# Priorite 1 : ~/.claude/sujets/session-<session_id>.txt (par SESSION — plusieurs agents
+#              en parallele sur le meme repo ont chacun leur sujet).
+# Priorite 2 : ~/.claude/sujets/<repo-key>.txt (par repo). Cle = chemin du projet
+#              (gitRoot si dispo, sinon l'ancre) normalise [^A-Za-z0-9] -> _.
 # Ecrit par l'agent Claude quand on ouvre/change de sujet. Absent => rien d'affiche.
 $sujet = $null
 try {
-    $key = if ($gitRoot) { $gitRoot.Trim() } else { $anchor }
-    $safe = ($key -replace '[^A-Za-z0-9]', '_')
-    $sujetFile = Join-Path $env:USERPROFILE ".claude\sujets\$safe.txt"
-    if (Test-Path $sujetFile) {
-        $sujet = (Get-Content $sujetFile -Raw -Encoding UTF8).Trim()
-        if ([string]::IsNullOrWhiteSpace($sujet)) { $sujet = $null }
+    if ($input_data -and $input_data.session_id) {
+        $sessionFile = Join-Path $env:USERPROFILE ".claude\sujets\session-$($input_data.session_id).txt"
+        if (Test-Path $sessionFile) {
+            $sujet = (Get-Content $sessionFile -Raw -Encoding UTF8).Trim()
+            if ([string]::IsNullOrWhiteSpace($sujet)) { $sujet = $null }
+        }
+    }
+    if (-not $sujet) {
+        $key = if ($gitRoot) { $gitRoot.Trim() } else { $anchor }
+        $safe = ($key -replace '[^A-Za-z0-9]', '_')
+        $sujetFile = Join-Path $env:USERPROFILE ".claude\sujets\$safe.txt"
+        if (Test-Path $sujetFile) {
+            $sujet = (Get-Content $sujetFile -Raw -Encoding UTF8).Trim()
+            if ([string]::IsNullOrWhiteSpace($sujet)) { $sujet = $null }
+        }
     }
 } catch {}
 
