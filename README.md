@@ -46,6 +46,8 @@ Le plugin est telecharge automatiquement, et la statusline pointe vers son scrip
 |--------|-------------|--------|
 | `avs-statusline` | Status line permanente : repo + agent + branche + modele | publie v1.0.0 |
 | `avs-mcp-agent-chat` | MCP server agent-chat (discussion inter-instances Claude Code) | publie v1.0.0 |
+| `avs-mcp-kb` | MCP server base de connaissances AVS (kb_search / kb_get / kb_save / kb_link / kb_log) | publie v1.0.0 |
+| `avs-logics-depannage` | Depannage Logic'S V2/V3 chez le client : skill guidee pour les techniciens + subagent d'enquete | publie v1.0.0 |
 | `avs-hooks` | Hooks AVS communs (encodage WinDev, secrets, etc.) | a venir |
 
 ## Bootstrap nouveau poste (recommande)
