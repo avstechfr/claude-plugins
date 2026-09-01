@@ -47,6 +47,25 @@ Traitement durable : redémarrage perpétuel du service (`sc.exe failure Spooler
 différé, suppression des monitors orphelins, et surveillance. AVS-Tools embarque *Nettoyage
 Spooler* et un **SpoolerWatchdog** (installation, désinstallation, exécution manuelle) pour ça.
 
+#### Cas connu : Star TSP100 (`tsp100lm.dll`)
+
+Signature très reconnaissable : une **salve de trois crashs `spoolsv.exe` (`c0000005`) dans les
+5 min qui suivent le boot**, puis plus rien jusqu'au reboot suivant. Le *language monitor*
+`tsp100lm.dll` (driver Star TSP100 / futurePRNT) interroge l'imprimante USB avant que Windows ne
+l'ait énumérée — race condition au démarrage. Ces trois crashs épuisent les deux redémarrages du
+recovery par défaut, et le service reste mort pour la journée.
+
+Diagnostic ciblé : sur un événement `Application` Id 1000 concernant `spoolsv.exe`, lire
+`Properties[3]` pour le **module fautif**, et comparer sa version à celle du driver dans le
+DriverStore — un écart trahit des **packs constructeur empilés** (cause racine).
+
+Ici le correctif durable va plus loin qu'un simple `sc failure` : recovery **perpétuel**
+(`reset= 0`), démarrage différé (`DelayedAutoStart=1`, à re-forcer car `sc config start=
+delayed-auto` ne l'écrit pas de façon fiable), suppression des monitors orphelins, **et un
+watchdog** — parce que le recovery Windows ne couvre **pas** l'arrêt propre (`Stop-Service`) et
+que Windows 11 n'émet plus l'événement SCM 7036. Procédure complète, scripts et rollback :
+`kb_search "spouleur Star TSP100 tsp100lm"`.
+
 ### Bons cuisine / bar qui ne sortent pas
 
 Le serveur d'impression Logic'S (`PrintS\Logic'S - Serveur Impression.exe`) est piloté par

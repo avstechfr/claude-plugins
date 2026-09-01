@@ -36,6 +36,25 @@ Ce que le technicien peut faire :
 Ce qui relève de Nicolas ou de l'agent `logics-bases-clients` : jobs restés bloqués, clôture à
 réparer ou à découper, chaîne de numérotation à reprendre.
 
+## Symptôme : refus à l'encaissement `ENCAISSEMENT_KO` / `LIGNES_DIRECTES`
+
+L'automate NF-525 **refuse le ticket** au moment de l'encaissement :
+`Code : ENCAISSEMENT_KO` — `Message : Sous-proc LIGNES_DIRECTES a échoué (cf. JET / Proc_Trace)`.
+
+**Cause** : écart d'arrondi entre les lignes et le pied de ticket sur de la **vente au poids /
+au mètre** (quantités non entières, ex. 0,65). La somme des lignes arrondies au centime diffère
+du total exact — c'est-à-dire du montant du règlement — souvent de **1 centime**.
+`LIGNES_DIRECTES` contrôle la cohérence lignes ↔ règlement, voit l'écart et refuse. C'est un
+**contrôle fiscal, pas une erreur de saisie** : il se reproduit sur toute vente au poids tant que
+le mode d'arrondi n'est pas corrigé.
+
+**Contournement magasin (débloquer la vente tout de suite)** : faire coïncider lignes et total —
+remise d'un centime sur une ligne, ou ressaisie en collant au règlement.
+
+**Fix de fond** : c'est le **paramétrage du mode d'arrondi** (ligne vs pied) côté Logic'S —
+**Nicolas / Tom**. Détail côté automate dans `JET / Proc_Trace`.
+`kb_search "ENCAISSEMENT_KO arrondi vente au poids"`.
+
 ## Symptôme : l'export comptable ne tombe pas sur la synthèse
 
 **Situation typique** : l'export ventes généré depuis Logic'S Gestion ne correspond pas au total
@@ -67,6 +86,29 @@ Exécutant qualifié : l'agent `logics-bases-clients` (repo `logics`), ou Nicola
 
 Ce que le technicien apporte : le **diagnostic chiffré** ci-dessus (quelles journées, quels
 numéros de clôture, quel montant), qui est exactement ce dont l'exécutant a besoin pour agir.
+
+## Symptôme : l'export comptable plante en erreur 70018
+
+À distinguer du cas précédent : ici l'export **ne se génère pas du tout**, il plante sur
+`70018 « La source de données n'est pas initialisée »` (sur `HNbEnr`). Ce n'est pas un écart de
+totaux, c'est un crash — donc pas le même diagnostic.
+
+**Cause** : l'export parcourt les archives Histo **mois par mois** (`MMYYYY_Caisse_*_Histo`). Si
+un mois de la période demandée n'a **aucune archive Histo** (aucune clôture Z sur ce mois),
+l'alias n'est jamais résolu et la lecture échoue. Contexte typique : **install neuve ou caisse
+remise à zéro**, dont la période d'export couvre un mois sans la moindre vente clôturée.
+
+**Diagnostic (lecture seule)** :
+
+1. Pour chaque mois de la période, regarder `C:\ServeurHF\BDD\<BASE>\MMYYYY\` et la présence de
+   `MMYYYY_Caisse_Ticket_Entete_Histo.fic`.
+2. Le mois sans archive est celui qui fait planter l'itération.
+
+**Fix technicien (immédiat)** : restreindre la période d'export aux seuls mois qui ont de vraies
+ventes clôturées (au moins une clôture Z Histo). L'export passe alors.
+
+**Fix de fond** : l'export devrait ignorer proprement un mois sans archive au lieu de crasher —
+bug Logic'S Gestion, **Nicolas / Tom**. `kb_search "export compta 70018 archive Histo"`.
 
 ## Vérifier avant de conclure
 
