@@ -1,7 +1,7 @@
 {
   "name": "avs-mcp-agent-chat",
   "description": "MCP server agent-chat : permet a plusieurs instances Claude Code de discuter (chat_send/chat_recv/chat_rooms/chat_whoami). Backend FileStore local par defaut, HttpStore intranet AVS via AGENT_CHAT_BACKEND=http.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "AVS Technologies",
     "url": "https://avs-technologies.fr"

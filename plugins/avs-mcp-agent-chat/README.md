@@ -27,14 +27,14 @@ Au prochain `claude`, le plugin est telecharge et le MCP `agent-chat` est mergé
 
 **Node.js** doit etre installe sur le poste (le serveur MCP tourne en `node`). Test : `node --version`.
 
-**Dependances Node** : le plugin contient un `package.json` qui declare `@modelcontextprotocol/sdk`. A la premiere utilisation, faire `npm install` dans le dossier du plugin :
+**Aucune dependance npm** depuis la v2.1.0 : le transport MCP stdio (JSON-RPC 2.0, un
+message par ligne) est ecrit a la main, comme dans `avs-mcp-kb`. Rien a installer, le plugin
+demarre tel quel.
 
-```
-cd ~/.claude/plugins/cache/avs-plugins/avs-mcp-agent-chat/1.0.0/
-npm install
-```
-
-(A automatiser dans un futur script bootstrap AVS.)
+> Avant la v2.1.0, le serveur importait `@modelcontextprotocol/sdk` et exigeait un
+> `npm install` dans le dossier du plugin. Personne ne le faisait : le serveur du plugin
+> echouait au demarrage (`CONNECTION_CLOSED`) et seule la copie du repo `avs` — la seule
+> avec ses `node_modules` — tournait reellement.
 
 ## Backends
 

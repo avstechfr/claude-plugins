@@ -2,12 +2,11 @@
 // MCP server : chat inter-agents Claude Code.
 // Backend pluggable : FileStore (par defaut) ou HttpStore (intranet, phase 2).
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+// Transport MCP stdio ecrit a la main (JSON-RPC 2.0, un message par ligne), comme
+// avs-mcp-kb : le plugin n'a ainsi AUCUNE dependance npm. Avec le SDK, il fallait un
+// `npm install` dans le dossier du plugin — que personne ne faisait : le serveur du
+// plugin ne demarrait pas (CONNECTION_CLOSED) et seule la copie du repo avs tournait.
+import { createInterface } from "node:readline";
 import { promises as fs, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
@@ -290,16 +289,7 @@ const TOOLS = [
   },
 ];
 
-const server = new Server(
-  { name: "avs-agent-chat", version: "0.1.0" },
-  { capabilities: { tools: {} } },
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args = {} } = request.params;
-
+async function handleTool(name, args = {}) {
   try {
     if (name === "chat_send") {
       const message = String(args.message || "").trim();
@@ -426,7 +416,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ],
     };
   }
-});
+}
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+// --- Serveur : JSON-RPC 2.0 sur stdio, un message JSON par ligne ---
+
+function send(msg) {
+  process.stdout.write(JSON.stringify(msg) + "\n");
+}
+
+async function handleRequest(req) {
+  switch (req.method) {
+    case "initialize":
+      return {
+        protocolVersion: req.params?.protocolVersion || "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "avs-agent-chat", version: "2.1.0" },
+      };
+    case "tools/list":
+      return { tools: TOOLS };
+    case "tools/call": {
+      const { name, arguments: args } = req.params || {};
+      return handleTool(name, args || {});
+    }
+    case "ping":
+      return {};
+    default:
+      throw { code: -32601, message: `Methode inconnue : ${req.method}` };
+  }
+}
+
+const rl = createInterface({ input: process.stdin, terminal: false });
+rl.on("line", async (line) => {
+  line = line.trim();
+  if (!line) return;
+  let req;
+  try {
+    req = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (req.id === undefined || req.id === null) return; // notification : rien a repondre
+  try {
+    send({ jsonrpc: "2.0", id: req.id, result: await handleRequest(req) });
+  } catch (err) {
+    send({
+      jsonrpc: "2.0",
+      id: req.id,
+      error: { code: err.code || -32603, message: err.message || String(err) },
+    });
+  }
+});
