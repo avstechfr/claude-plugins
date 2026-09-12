@@ -14,7 +14,12 @@ Conventions :
 - **Sujet** : contenu de `~/.claude/sujets/session-<session_id>.txt`, ecrit par les hooks (voir [Sujet en cours](#sujet-en-cours))
 - **Repo** : basename de `git rev-parse --show-toplevel`
 - **Dossier courant** : chemin du cwd relatif a la racine du repo (`.` a la racine) ; hors repo git, basename du cwd
-- **Agent** : contenu de `.claude/agent-name` a la racine du repo (gitignore, propre a chaque clone)
+- **Agent** : le nom sous lequel les autres agents te voient sur le chat (registre
+  `~/.avs/agent-chat/agents.json` tenu par `avs-mcp-agent-chat`, derive du sujet en cours).
+  Repli sur `.claude/agent-name` tant qu'aucun nom de chat n'est enregistre pour la session.
+  Depuis la v2.2.0 : avant, ce segment affichait toujours `.claude/agent-name`, versionne par
+  repo — toutes les fenetres d'un meme repo montraient le meme nom, et il y avait deux
+  notions concurrentes de "nom d'agent"
 - **Branche** : sortie de `git rev-parse --abbrev-ref HEAD`
 - **Modele** : champ `model.display_name` du JSON Claude Code
 

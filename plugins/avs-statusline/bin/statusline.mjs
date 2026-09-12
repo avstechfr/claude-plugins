@@ -40,8 +40,22 @@ const racine = git(ancre, ["rev-parse", "--show-toplevel"]);
 const projet = racine ? path.basename(racine) : d.workspace?.repo?.name || "—";
 const branche = git(ancre, ["rev-parse", "--abbrev-ref", "HEAD"]) || "—";
 
+// Agent : le nom sous lequel les AUTRES agents te voient sur le chat (registre tenu par
+// avs-mcp-agent-chat, derive du sujet et rendu unique). On ne montre plus
+// `.claude/agent-name` : ce fichier, versionne par repo, donnait le meme nom a toutes les
+// fenetres, et faisait coexister deux notions de "nom d'agent". Il sert de repli tant
+// qu'aucun nom de chat n'est enregistre pour la session.
 let agent = "—";
-if (racine) {
+if (d.session_id) {
+  try {
+    const reg = JSON.parse(
+      fs.readFileSync(path.join(os.homedir(), ".avs", "agent-chat", "agents.json"), "utf8")
+    );
+    const trouve = Object.entries(reg).find(([, e]) => e && e.session === d.session_id);
+    if (trouve) agent = trouve[0];
+  } catch {}
+}
+if (agent === "—" && racine) {
   try {
     agent = fs.readFileSync(path.join(racine, ".claude", "agent-name"), "utf8").trim() || "—";
   } catch {}
