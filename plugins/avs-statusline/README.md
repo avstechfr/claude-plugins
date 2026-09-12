@@ -34,6 +34,18 @@ Le titre est resolu via `GET /api/external/sujets` (cle `AVS_API_KEY` ou `~/.avs
 mis en cache 12 h dans `~/.claude/sujets/.cache-sujets.json`, et tronque a ~42 caracteres.
 `SessionEnd` supprime le fichier de la session et purge ceux de plus de 7 jours.
 
+### Le sujet est REVISE, pas fige (v2.1.0)
+
+La barre doit dire sur quoi on travaille **maintenant**. Un signal fort (numero cite, appel
+a l'API sujets) protege donc le sujet pendant **30 minutes seulement** ; ensuite le filet a
+le droit de reviser. Il repasse toutes les **20 minutes** et remplace le sujet si la
+conversation a derive — une session de quatre heures change de sujet en route.
+
+Et s'il repond que plus aucun sujet ne correspond, le sujet affiche est **efface** (des lors
+qu'il date de plus de 30 min) plutot que laisse en place : pas de `🎯` vaut mieux qu'un
+`🎯` qui ment. C'etait le defaut de la v2.0.0 : le premier `#172` prononce restait affiche
+jusqu'a la fin de la session, meme deux heures apres avoir change de chantier.
+
 **Pourquoi des hooks et pas une consigne dans CLAUDE.md** : jusqu'a la v2.0.0, ecrire ce
 fichier etait demande a l'agent en prose. Mesure faite le 12/09/2026 : ~15 sessions
 renseignees en 3 mois. Ce qui doit arriver a chaque fois doit etre execute par le harnais.

@@ -8,8 +8,8 @@
     {
       "name": "avs-statusline",
       "source": "./plugins/avs-statusline",
-      "description": "Status line Claude Code AVS : sujet AVS en cours (pose automatiquement par hooks) + repo + dossier + agent + branche Git + modele",
-      "version": "2.0.0",
+      "description": "Status line Claude Code AVS : sujet AVS en cours (pose et REVISE automatiquement par hooks) + repo + dossier + agent + branche Git + modele",
+      "version": "2.1.0",
       "author": {
         "name": "AVS Technologies"
       }

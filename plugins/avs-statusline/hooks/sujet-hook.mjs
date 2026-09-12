@@ -21,6 +21,12 @@ import { SUJETS_DIR, listeSujets, formaterParNumero, courtTitre, apiKey } from "
 const MODELE_FILET = "claude-haiku-4-5-20251001";
 const FILET_TIMEOUT_MS = 25_000;
 const PURGE_APRES_MS = 7 * 24 * 60 * 60 * 1000;
+// La barre doit dire sur quoi on travaille MAINTENANT, pas ce qu'on a ouvert ce matin.
+// Un signal fort (numero cite, appel a l'API sujets) protege donc le sujet pendant une
+// FENETRE, pas pour toute la session : passe ce delai, le filet a le droit de reviser.
+const VERROU_MS = 30 * 60 * 1000;
+// Cadence de revision du filet : au-dela, il revient voir si la conversation a derive.
+const REVISION_MS = 20 * 60 * 1000;
 
 // Garde anti-recursion : le filet relance `claude -p`, qui declencherait a son tour
 // les hooks Stop. Le fils voit cette variable et sort immediatement.
@@ -43,13 +49,20 @@ function ecrireEtat(sid, etat) {
   } catch {}
 }
 
-/** Pose le sujet si la source est au moins aussi fiable que celle deja en place. */
+/** Pose le sujet si la source est au moins aussi fiable que celle en place — ou si
+ *  celle-ci a vieilli au-dela de VERROU_MS (un sujet cite il y a deux heures ne dit plus
+ *  ce qu'on fait maintenant). */
 function poser(sid, texte, source) {
   if (!sid || !texte) return false;
   const rang = { filet: 1, api: 2, humain: 3 };
   const etat = lireEtat(sid);
-  if (etat.texte === texte) return false;
-  if (etat.source && rang[source] < rang[etat.source]) return false;
+  if (etat.texte === texte) {
+    // Meme sujet : on rafraichit l'horodatage, le travail est toujours en cours.
+    ecrireEtat(sid, { ...etat, ts: Date.now() });
+    return false;
+  }
+  const encoreFrais = Date.now() - (etat.ts || 0) < VERROU_MS;
+  if (etat.source && encoreFrais && rang[source] < rang[etat.source]) return false;
   fs.mkdirSync(SUJETS_DIR, { recursive: true });
   fs.writeFileSync(path.join(SUJETS_DIR, `session-${sid}.txt`), texte.trim() + "\n", "utf8");
   ecrireEtat(sid, { ...etat, texte, source, ts: Date.now() });
@@ -213,10 +226,11 @@ async function surStop(d) {
   // (La premiere est la variable AVS_SUJET_HOOK posee sur le fils.)
   if (d.stop_hook_active) return false;
   const etat = lireEtat(sid);
-  // Un signal fort a deja parle : le filet n'a rien a faire.
-  if (etat.source === "humain" || etat.source === "api") return false;
-  // Une deduction par session suffit, sauf si la conversation a franchement avance.
-  if (etat.source === "filet" && Date.now() - (etat.ts || 0) < 30 * 60 * 1000) return false;
+  // Le filet repasse regulierement, meme apres un signal fort : une session de 4 h
+  // change de sujet en route, et une barre qui affiche le sujet du matin ment.
+  const age = Date.now() - (etat.ts || 0);
+  if (etat.texte && age < REVISION_MS) return false;
+  if (!etat.texte && age < 60_000) return false; // rien a dire, on n'insiste pas chaque tour
   if (!apiKey()) return false;
 
   const messages = derniersMessagesUtilisateur(d.transcript_path);
@@ -232,14 +246,25 @@ async function surStop(d) {
     "Voici les derniers messages d'un utilisateur a son assistant de developpement :",
     messages.map((m) => "- " + m).join("\n"),
     "",
-    "Sur quel sujet de la liste porte cette conversation ?",
+    "Sur quel sujet de la liste porte le travail EN COURS ? Les derniers messages priment :",
+    "si la conversation a change de sujet en route, reponds sur le sujet actuel, pas celui du debut.",
     "Reponds UNIQUEMENT par le numero (ex: 172), ou par none si aucun ne correspond clairement.",
   ].join("\n");
 
   const rep = await claudeP(prompt);
   const m = rep && rep.match(/\b(\d{1,4})\b/);
   if (!m) {
-    // On note quand meme le passage : sans ca le filet repartirait a chaque tour.
+    // "none" : plus rien de la liste ne correspond. Si le sujet affiche est vieux, on
+    // l'EFFACE au lieu de le laisser mentir — pas de 🎯 vaut mieux qu'un faux 🎯.
+    // Un sujet pose il y a moins de VERROU_MS est conserve : l'humain vient de le dire.
+    if (etat.texte && Date.now() - (etat.ts || 0) > VERROU_MS) {
+      try {
+        fs.unlinkSync(path.join(SUJETS_DIR, `session-${sid}.txt`));
+      } catch {}
+      ecrireEtat(sid, { ts: Date.now(), source: "filet" });
+      return true;
+    }
+    // On note le passage : sans ca le filet repartirait a chaque tour.
     ecrireEtat(sid, { ...etat, ts: Date.now(), source: etat.source || "filet" });
     return false;
   }
