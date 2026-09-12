@@ -13,6 +13,7 @@ import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { resoudreNom, agentsLocaux, sujetCourant, sessionId } from "./identite.mjs";
 
 const DEFAULT_ROOM = "default";
 const DEFAULT_LIMIT = 50;
@@ -62,14 +63,38 @@ function detectAgentNameFromFile() {
   }
 }
 
-// Priorite : AGENT_NAME env > <repo>/.claude/agent-name > <repo>-<pid4> auto.
-// Le pid4 fallback evite la collision quand 2 fenetres sont ouvertes dans un
-// repo qui n'a pas encore de .claude/agent-name versione.
+// Identite : voir identite.mjs. Un nom par SESSION, derive du sujet en cours, rendu
+// unique parmi les agents vivants. `.claude/agent-name` n'est plus l'identite (il est
+// versionne par repo : toutes les fenetres ouvertes sur `avs` s'appelaient `central`),
+// il ne sert plus qu'a l'affichage de la statusline.
 const AGENT_NAME_FROM_FILE = detectAgentNameFromFile();
-const AGENT_NAME =
-  process.env.AGENT_NAME?.trim() ||
-  (AGENT_NAME_FROM_FILE ? slugify(AGENT_NAME_FROM_FILE) : null) ||
-  `${slugify(detectRepoName())}-${String(process.pid).slice(-4)}`;
+
+/** Noms actifs vus sur le chat dans les dernieres heures (autres machines comprises).
+ *  Best-effort : si le backend ne repond pas, on se rabat sur le registre local. */
+async function nomsDistantsRecents() {
+  try {
+    const messages = await store.fetchSince({ limit: 200 });
+    const limite = Date.now() - 6 * 60 * 60 * 1000;
+    return [
+      ...new Set(
+        messages
+          .filter((m) => !m.ts || new Date(m.ts).getTime() > limite)
+          .map((m) => m.sender)
+          .filter(Boolean),
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+/** Nom courant. Tant qu'aucun message n'est parti, il se recalcule (le sujet n'est
+ *  parfois connu que quelques secondes apres l'ouverture de la fenetre) ; le premier
+ *  envoi le fige pour que l'adressage reste stable. */
+async function nomCourant({ figer = false } = {}) {
+  const occupesDistants = await nomsDistantsRecents();
+  return resoudreNom({ occupesDistants, figer });
+}
 
 const BACKEND = (process.env.AGENT_CHAT_BACKEND || "file").toLowerCase();
 
@@ -254,7 +279,13 @@ const TOOLS = [
   {
     name: "chat_whoami",
     description:
-      "Retourne l'identite de cet agent telle que vue par les autres (sender). Utile pour debug ou pour annoncer ton arrivee.",
+      "Retourne l'identite de cet agent telle que vue par les autres (sender), le sujet AVS en cours et si le nom est fige. Le nom est derive du sujet et rendu unique ; il peut encore changer tant qu'aucun message n'a ete envoye.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "chat_agents",
+    description:
+      "Liste les agents joignables : les fenetres ouvertes sur cette machine (avec le sujet de chacune) et les noms vus parler sur le chat ces 6 dernieres heures. A appeler AVANT d'ecrire a quelqu'un, pour connaitre son nom exact.",
     inputSchema: { type: "object", properties: {} },
   },
 ];
@@ -274,7 +305,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const message = String(args.message || "").trim();
       if (!message) throw new Error("`message` est requis et non vide");
       const room = String(args.room || DEFAULT_ROOM);
-      const stored = await store.append({ sender: AGENT_NAME, room, message });
+      const { nom } = await nomCourant({ figer: true });
+      const stored = await store.append({ sender: nom, room, message });
       return {
         content: [
           {
@@ -330,24 +362,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "chat_whoami") {
-      const senderSource = process.env.AGENT_NAME?.trim()
-        ? "env:AGENT_NAME"
-        : AGENT_NAME_FROM_FILE
-          ? "file:.claude/agent-name"
-          : "auto:<repo>-<pid4>";
+      const { nom, source, fige } = await nomCourant();
+      const sujet = sujetCourant();
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify(
               {
-                sender: AGENT_NAME,
-                senderSource,
+                sender: nom,
+                senderSource: source,
+                // Tant que c'est false, le nom peut encore bouger si le sujet se precise.
+                fige,
+                sujet: sujet?.brut || null,
+                session: sessionId(),
                 backend: BACKEND,
                 file: BACKEND === "file" ? FILE_PATH : null,
                 http: BACKEND === "http" ? HTTP_URL : null,
                 pid: process.pid,
                 hostname: hostname(),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+
+    if (name === "chat_agents") {
+      const distants = await nomsDistantsRecents();
+      const locaux = agentsLocaux();
+      const connusEnLocal = new Set(locaux.map((a) => a.nom));
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                // Fenetres ouvertes sur cette machine (registre local, avec leur sujet).
+                locaux,
+                // Noms vus parler sur le chat ces 6 dernieres heures, autres machines
+                // comprises. Un agent silencieux depuis 6 h n'y figure pas.
+                distants: distants.filter((n) => !connusEnLocal.has(n)),
               },
               null,
               2,
