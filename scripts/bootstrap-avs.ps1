@@ -57,33 +57,47 @@ $Settings['enabledPlugins']['avs-mcp-agent-chat@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-kb@avs-plugins'] = $true
 
 # --- 4. statusLine via launcher stable (workaround Anthropic) ---
-# Deux pieges resolus ici :
+# Trois pieges resolus ici :
 #   1. Sous Windows, Claude Code lance la commande statusLine via cmd qui ne resout PAS ~
 #      -> la commande echoue silencieusement et AUCUNE statusline ne s'affiche.
 #      On ecrit donc un chemin ABSOLU dans settings.json.
 #   2. Le chemin du cache contient le numero de version du plugin, qui casse a chaque release.
 #      Le launcher resout la DERNIERE version en cache a chaque execution :
 #      plus besoin de retoucher settings.json quand le plugin est mis a jour.
-$LauncherPath = Join-Path $ClaudeDir "avs-statusline-launcher.sh"
-$LauncherBash = @'
-#!/bin/bash
-# Launcher statusline AVS : delegue a la derniere version du plugin en cache.
-# Genere par bootstrap-avs.ps1 — ne pas editer, relancer le bootstrap pour regenerer.
-BASE="$HOME/.claude/plugins/cache/avs-plugins/avs-statusline"
-LATEST=$(ls -1 "$BASE" 2>/dev/null | sort -V 2>/dev/null | tail -1)
-[ -z "$LATEST" ] && LATEST=$(ls -1 "$BASE" 2>/dev/null | sort | tail -1)
-if [ -n "$LATEST" ]; then
-  exec bash "$BASE/$LATEST/bin/statusline-dispatch.sh"
-fi
-# Plugin pas encore telecharge (1er lancement) : ligne minimale
-cat > /dev/null
-printf 'AVS - plugin avs-statusline en cours d installation, relance Claude Code\n'
+#   3. Plus AUCUN `bash` dans la chaine (12/09/2026) : sur un poste ou WSL est installe,
+#      le `bash` du PATH est celui de WSL, pas Git Bash. Il repond OSTYPE=linux-gnu et
+#      ne sait pas ouvrir un chemin C:\... -> statusline vide, sans le moindre message.
+#      Le launcher est desormais un script Node, qui se comporte pareil sur les 3 OS.
+$OldLauncher = Join-Path $ClaudeDir "avs-statusline-launcher.sh"
+if (Test-Path $OldLauncher) { Remove-Item $OldLauncher -Force }
+$LauncherPath = Join-Path $ClaudeDir "avs-statusline-launcher.mjs"
+$LauncherNode = @'
+// Launcher statusline AVS : delegue a la derniere version du plugin en cache.
+// Genere par bootstrap-avs.ps1 — ne pas editer, relancer le bootstrap pour regenerer.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+const base = path.join(os.homedir(), ".claude", "plugins", "cache", "avs-plugins", "avs-statusline");
+const cle = (v) => v.split(/[.-]/).map((n) => String(n).padStart(6, "0")).join(".");
+let versions = [];
+try {
+  versions = fs.readdirSync(base).sort((a, b) => cle(a).localeCompare(cle(b)));
+} catch {}
+const derniere = versions[versions.length - 1];
+if (derniere) {
+  await import(pathToFileURL(path.join(base, derniere, "bin", "statusline.mjs")).href);
+} else {
+  // Plugin pas encore telecharge (1er lancement)
+  process.stdout.write("AVS - plugin avs-statusline en cours d installation, relance Claude Code\n");
+}
 '@
-[System.IO.File]::WriteAllText($LauncherPath, ($LauncherBash -replace "`r`n", "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText($LauncherPath, ($LauncherNode -replace "`r`n", "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 $LauncherAbs = $LauncherPath -replace '\\', '/'
 $Settings['statusLine'] = @{
     type    = 'command'
-    command = "bash `"$LauncherAbs`""
+    command = "node `"$LauncherAbs`""
 }
 
 # --- 5. Ecriture ---
@@ -118,28 +132,10 @@ if (-not $GitOK) {
     Write-Host "[ERR] Git absent — REQUIS pour la statusline + plugins" -ForegroundColor Red
 }
 
-$BashOK = $false
-try {
-    $null = & bash --version 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "[OK] bash dispo (Git Bash)" -ForegroundColor Green
-        $BashOK = $true
-    }
-} catch {}
-if (-not $BashOK) {
-    Write-Host "[ERR] bash absent — REQUIS pour la statusline (installer Git for Windows qui inclut Git Bash)" -ForegroundColor Red
-}
-
-$PwshOK = $false
-try {
-    $v = & pwsh --version 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "[OK] $v" -ForegroundColor Green
-        $PwshOK = $true
-    }
-} catch {}
-if (-not $PwshOK) {
-    Write-Host "[WARN] pwsh (PowerShell 7) absent — la statusline fallback sur powershell 5.1 (rendu emoji moins propre)" -ForegroundColor Yellow
+# bash n'est plus dans la chaine de la statusline (cf. piege 3 plus haut) : plus rien
+# a verifier de ce cote. Node, teste juste au-dessus, suffit.
+if (-not $NodeOK) {
+    Write-Host "[ERR] Node.js est desormais REQUIS pour la statusline (script unique .mjs)" -ForegroundColor Red
 }
 
 # --- 7. Variables d'env pour le backend HTTP du chat ---

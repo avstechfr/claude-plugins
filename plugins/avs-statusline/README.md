@@ -1,114 +1,111 @@
 # avs-statusline
 
-Status line Claude Code AVS : sujet en cours, nom du repo, agent (`.claude/agent-name`), branche Git, modele actif.
+Status line Claude Code AVS : sujet AVS en cours, nom du repo, dossier courant, agent (`.claude/agent-name`), branche Git, modele actif.
 
 ## Rendu
 
 ```
-🎯 #133 Rhoméo Décoration · 📁 avs · 📂 site-web/app · 🤖 automate · 🌿 main · ✨ Opus 4.8 (1M context)
+🎯 #133 RHOMEO DECORATION - Installation… · 📁 avs · 📂 site-web/app · 🤖 automate · 🌿 main · ✨ Opus 5
 ```
 
-Le `🎯` n'apparait que si un sujet courant est defini (voir plus bas) ; sinon la ligne demarre a `📁`.
+Le `🎯` n'apparait que si un sujet est connu pour la session ; sinon la ligne demarre a `📁`.
 
 Conventions :
-- **Sujet** : contenu de `~/.claude/sujets/session-<session_id>.txt` ou `~/.claude/sujets/<repo-key>.txt` (voir [Sujet en cours](#sujet-en-cours))
+- **Sujet** : contenu de `~/.claude/sujets/session-<session_id>.txt`, ecrit par les hooks (voir [Sujet en cours](#sujet-en-cours))
 - **Repo** : basename de `git rev-parse --show-toplevel`
 - **Dossier courant** : chemin du cwd relatif a la racine du repo (`.` a la racine) ; hors repo git, basename du cwd
-- **Agent** : contenu de `.claude/agent-name` a la racine du repo (gitignore, propre a chaque clone). Exemple : `automate`, `pad`, `cloud`
+- **Agent** : contenu de `.claude/agent-name` a la racine du repo (gitignore, propre a chaque clone)
 - **Branche** : sortie de `git rev-parse --abbrev-ref HEAD`
 - **Modele** : champ `model.display_name` du JSON Claude Code
 
 ## Sujet en cours
 
-La statusline affiche le sujet/dossier AVS sur lequel on travaille, lu depuis un fichier texte cote workstation. Deux niveaux, du plus prioritaire au moins prioritaire :
+Le sujet est **pose automatiquement par les hooks du plugin** (`hooks/hooks.json` +
+`hooks/sujet-hook.mjs`). Trois signaux, du plus fiable au moins fiable ; un signal faible
+n'ecrase jamais un signal fort dans la meme session :
 
+| Evenement | Signal | Exemple |
+|---|---|---|
+| `UserPromptSubmit` | numero ou titre cite par l'humain | « on reprend le **#172** », « on avance sur **Rhomeo** » |
+| `PostToolUse` | l'agent appelle l'API sujets | `POST /api/external/sujets/<id>/notes` |
+| `Stop` | filet : un Haiku choisit dans la liste des sujets ouverts | deduit de la conversation, au plus une fois par demi-heure |
+
+Le titre est resolu via `GET /api/external/sujets` (cle `AVS_API_KEY` ou `~/.avs/api_key`),
+mis en cache 12 h dans `~/.claude/sujets/.cache-sujets.json`, et tronque a ~42 caracteres.
+`SessionEnd` supprime le fichier de la session et purge ceux de plus de 7 jours.
+
+**Pourquoi des hooks et pas une consigne dans CLAUDE.md** : jusqu'a la v2.0.0, ecrire ce
+fichier etait demande a l'agent en prose. Mesure faite le 12/09/2026 : ~15 sessions
+renseignees en 3 mois. Ce qui doit arriver a chaque fois doit etre execute par le harnais.
+
+**Pourquoi plus de fallback par repo** : `~/.claude/sujets/<repo-key>.txt` etait partage par
+toutes les fenetres ouvertes sur le repo et n'etait jamais rafraichi — celui du repo `avs`
+datait de deux mois et affichait un sujet faux en permanence. Supprime en v2.0.0 : mieux
+vaut pas de `🎯` qu'un `🎯` qui ment.
+
+### Poser le sujet a la main
+
+```bash
+echo "#133 Rhomeo Decoration" > ~/.claude/sujets/session-<session_id>.txt
 ```
-~/.claude/sujets/session-<session_id>.txt   # par SESSION (prioritaire)
-~/.claude/sujets/<repo-key>.txt             # par repo (fallback)
-```
 
-- **`<session_id>`** = champ `session_id` du JSON Claude Code. Permet a plusieurs agents en parallele sur le meme repo d'afficher chacun leur sujet.
-- **`<repo-key>`** = chemin absolu du repo (`git rev-parse --show-toplevel`) avec tout caractere non alphanumerique remplace par `_`.
-  Exemple : `C:\Users\Nicolas\Documents\github\avs` -> `C__Users_Nicolas_Documents_github_avs.txt`
-- **Contenu** : une ligne libre, en UTF-8 (sans BOM). Exemple : `#133 Rhoméo Décoration`
-- **Absent ou vide** : aucun `🎯` n'est affiche.
-
-Le fichier est ecrit par l'agent Claude quand on ouvre/change de sujet (il connait le numero + titre via l'API intranet). Le fichier session est relu a chaque rafraichissement : le sujet change en direct, sans redemarrage.
+Ne **jamais** ecrire dans un fichier `<repo-key>.txt` : il n'est plus lu, et il l'etait par
+toutes les autres fenetres.
 
 ## Install
 
-**Limitation Anthropic (mai 2026)** : la clé `statusLine` n'est PAS supportee dans le `settings.json` d'un plugin (seules `agent` et `subagentStatusLine` le sont). Le plugin distribue donc le script, mais l'utilisateur doit declarer `statusLine` dans son `~/.claude/settings.json` perso.
+**Limitation Anthropic** : la cle `statusLine` n'est pas supportee dans le `settings.json`
+d'un plugin (contrairement aux hooks, eux bien pris en charge). Le plugin distribue donc le
+script, mais la cle `statusLine` doit vivre dans le `~/.claude/settings.json` de l'utilisateur.
 
-### Etape 1 — Activer le plugin (auto via `extraKnownMarketplaces`)
-
-Dans `~/.claude/settings.json` :
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "avs-plugins": {
-      "source": { "source": "github", "repo": "avstechfr/claude-plugins" }
-    }
-  },
-  "enabledPlugins": {
-    "avs-statusline@avs-plugins": true
-  }
-}
-```
-
-Au prochain `claude`, le plugin est telecharge dans `~/.claude/plugins/cache/avs-plugins/avs-statusline/<version>/`.
-
-### Etape 2 — Declarer la statusLine
-
-**Recommande** : lancer le bootstrap, qui fait les etapes 1 ET 2 proprement (chemin absolu + launcher qui suit automatiquement la derniere version du plugin, plus besoin de retoucher settings.json aux mises a jour) :
+### Recommande — le bootstrap fait tout
 
 ```powershell
 irm https://raw.githubusercontent.com/avstechfr/claude-plugins/main/scripts/bootstrap-avs.ps1 | iex
 ```
 
-**Ou en manuel**, ajouter dans `~/.claude/settings.json` :
+Il declare le marketplace, active les plugins, genere `~/.claude/avs-statusline-launcher.mjs`
+(qui suit automatiquement la derniere version en cache) et pointe `statusLine` dessus.
 
-**macOS / Linux :**
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/plugins/cache/avs-plugins/avs-statusline/1.3.0/bin/statusline-dispatch.sh"
-  }
-}
-```
-
-**Windows — ⚠️ chemin ABSOLU obligatoire, pas de `~` :**
+### Manuel
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "bash C:/Users/TON_USER/.claude/plugins/cache/avs-plugins/avs-statusline/1.3.0/bin/statusline-dispatch.sh"
+    "command": "node \"C:/Users/TON_USER/.claude/plugins/cache/avs-plugins/avs-statusline/2.0.0/bin/statusline.mjs\""
   }
 }
 ```
 
-Sous Windows, Claude Code lance la commande via `cmd`, qui ne resout **pas** le `~` : avec `~/...` la commande echoue silencieusement et **aucune statusline ne s'affiche** (constate le 10/07/2026 chez Nicolas). Toujours mettre le chemin absolu avec des slashs `/`.
-
-Au prochain demarrage de Claude Code, la status line s'affiche.
-
-⚠️ Le numero de version `1.3.0` dans le chemin doit etre mis a jour si le plugin est versionne ulterieurement. Suivre les releases sur https://github.com/avstechfr/claude-plugins/releases
+⚠️ **Chemin ABSOLU obligatoire sous Windows** : Claude Code lance la commande via `cmd`, qui
+ne resout pas `~`. Avec `~/...`, la commande echoue en silence et aucune statusline ne
+s'affiche (constate le 10/07/2026).
 
 ## Detail technique
 
-| Plateforme | Script execute |
-|------------|----------------|
-| Windows (Git Bash, MSYS, Cygwin) | `bin/statusline-dispatch.sh` -> `bin/statusline.ps1` (via `pwsh` ou `powershell`) |
-| macOS / Linux | `bin/statusline-dispatch.sh` -> `bin/statusline.sh` (jq optionnel, fallback grep) |
+Un seul script, `bin/statusline.mjs`, execute par `node` sur les trois OS.
 
-Le dispatcher fait le sniff OS via `$OSTYPE` et delegue. Un seul `command` dans `settings.json` plugin, fonctionne partout.
+**Pourquoi Node et plus bash+PowerShell** (v2.0.0, 12/09/2026) : l'ancien
+`bin/statusline-dispatch.sh` choisissait sa cible avec `$OSTYPE`. Sur un poste Windows ou
+**WSL est installe, le `bash` du PATH est celui de WSL**, pas Git Bash : il repond
+`OSTYPE=linux-gnu`, part sur la branche Linux, et ne sait meme pas ouvrir un chemin
+`C:\...`. Resultat : plus aucune statusline, sans le moindre message d'erreur. Le
+diagnostic a pris du temps parce que le script PowerShell, lui, fonctionnait parfaitement
+quand on l'appelait a la main.
+
+`bin/statusline-dispatch.sh` reste comme shim (`exec node statusline.mjs`) pour les postes
+bootstrappes avant la v2.0.0. **Node.js est desormais requis** — il l'etait deja pour les
+MCP AVS.
 
 ## Personnaliser
 
-Si tu veux changer la mise en forme (autres emojis, ordre des champs, ajout du contexte window %), edite `bin/statusline.ps1` et `bin/statusline.sh` de la meme facon, puis push une nouvelle version du plugin sur `avstechfr/claude-plugins`. Les utilisateurs feront `/plugin update avs-statusline` pour recuperer.
+Editer `bin/statusline.mjs`, bumper la version dans `.claude-plugin/plugin.json` **et** dans
+`.claude-plugin/marketplace.json`, pousser sur `avstechfr/claude-plugins`. Les utilisateurs
+recuperent avec `/plugin update avs-statusline`.
 
 ## Convention `.claude/agent-name`
 
-Chaque repo AVS suit la convention "un agent par projet" : on depose un fichier `.claude/agent-name` contenant un slug court (`automate`, `pad`, `cloud`, `intranet`, etc.) qui identifie le scope de l'agent Claude qui travaille dans ce repo. Ce fichier est gitignore (un agent vit cote workstation, pas dans le code source partage).
+Chaque repo AVS suit la convention "un agent par projet" : un fichier `.claude/agent-name`
+contenant un slug court (`automate`, `pad`, `cloud`, `central`…) qui identifie l'agent Claude
+qui travaille dans ce repo. Ce fichier est gitignore (un agent vit cote workstation).
