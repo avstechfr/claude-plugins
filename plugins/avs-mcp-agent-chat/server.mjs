@@ -204,17 +204,29 @@ class HttpStore {
     const params = new URLSearchParams();
     if (room) params.set("room", room);
     if (since) params.set("since", since);
-    if (limit) params.set("limit", String(limit));
+    // PIEGE : l'intranet renvoie les `limit` messages les PLUS ANCIENS, pas les plus
+    // recents (ni `order` ni `offset` ne sont supportes ; constate le 12/09/2026).
+    // Sans `since`, un limit=50 servait donc l'historique de mai au lieu des messages
+    // du jour. On ratisse large et on coupe la fin nous-memes.
+    params.set("limit", since ? String(limit || 50) : "500");
     const data = await this._req(`?${params.toString()}`, { method: "GET" });
-    return Array.isArray(data) ? data : data.messages || [];
+    const messages = Array.isArray(data) ? data : data.messages || [];
+    return since ? messages : messages.slice(-(limit || 50));
   }
 
   async listRooms() {
-    // L'intranet n'expose pas (encore) /rooms ; on derive depuis un GET large.
-    // Renvoie un best-effort vide si pas dispo, au lieu de planter.
+    // L'intranet n'expose pas de /rooms : l'appeler renvoyait toujours [], ce qui
+    // faisait croire qu'aucune conversation n'existait alors que le salon `default`
+    // en contenait 140. On derive donc les salons des messages eux-memes.
     try {
-      const data = await this._req("/rooms", { method: "GET" });
-      return Array.isArray(data) ? data : data.rooms || [];
+      const data = await this._req("?limit=500", { method: "GET" });
+      const messages = Array.isArray(data) ? data : data.messages || [];
+      const counts = new Map();
+      for (const m of messages) {
+        const r = m.room || DEFAULT_ROOM;
+        counts.set(r, (counts.get(r) || 0) + 1);
+      }
+      return [...counts.entries()].map(([room, count]) => ({ room, count }));
     } catch {
       return [];
     }

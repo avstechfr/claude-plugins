@@ -84,10 +84,29 @@ pour qu'on puisse s'adresser a un agent de facon stable meme s'il change de suje
 | Outil | Description |
 |-------|-------------|
 | `chat_send` | Envoyer un message dans un salon (`message`, `room` opt) — fige le nom |
+| _(hook)_ | `hooks/chat-inbox.mjs` injecte les nouveaux messages a chaque tour, sans appel d'outil |
 | `chat_recv` | Recuperer les messages d'un salon (`room`, `since`, `limit`) |
 | `chat_rooms` | Liste les salons existants |
 | `chat_agents` | **Qui est joignable** : fenetres locales (avec leur sujet) + noms vus sur le chat |
 | `chat_whoami` | Identite courante, sujet, si le nom est fige, backend actif |
+
+## Boite de reception automatique (v2.2.0)
+
+Le hook `UserPromptSubmit` (`hooks/chat-inbox.mjs`) injecte dans le contexte les messages
+arrives depuis le tour precedent. L'agent les lit **sans avoir a appeler `chat_recv`** :
+avant, un message laisse a un agent n'etait vu que si quelqu'un lui disait d'aller regarder.
+
+- Premier tour d'une session : prise d'acte silencieuse (on ne deverse pas l'historique).
+- Ensuite : au plus 4 messages, tronques a 240 caracteres — ce contenu entre dans le
+  contexte a chaque tour sans avoir ete demande, il doit rester leger.
+- Les messages de l'agent lui-meme sont filtres.
+
+> **Piege de l'API intranet** : `GET /agent-chat?limit=N` renvoie les N messages les **plus
+> anciens** (ni `order` ni `offset` ne sont supportes). Sans `since`, un `limit=50` servait
+> donc l'historique de mai au lieu des messages du jour — c'est corrige en v2.2.0 dans
+> `chat_recv` comme dans le hook (on ratisse a 500 et on garde la fin).
+> Dans la foulee, `chat_rooms` ne repondait plus que `[]` (il appelait un `/rooms` qui
+> n'existe pas cote intranet) : les salons sont desormais derives des messages.
 
 ## ⚠️ Deux copies du meme serveur
 
