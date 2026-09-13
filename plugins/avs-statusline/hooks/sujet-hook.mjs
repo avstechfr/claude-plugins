@@ -248,11 +248,15 @@ async function surStop(d) {
     "",
     "Sur quel sujet de la liste porte le travail EN COURS ? Les derniers messages priment :",
     "si la conversation a change de sujet en route, reponds sur le sujet actuel, pas celui du debut.",
-    "Reponds UNIQUEMENT par le numero (ex: 172), ou par none si aucun ne correspond clairement.",
+    "Dans le doute, reponds none : un sujet faux est pire que pas de sujet.",
+    "Reponds UNIQUEMENT le numero, rien d'autre (ex: 172), ou none.",
   ].join("\n");
 
   const rep = await claudeP(prompt);
-  const m = rep && rep.match(/\b(\d{1,4})\b/);
+  // La reponse doit etre UNIQUEMENT un numero. Avant, un `\b(\d+)\b` pechait le premier
+  // nombre venu dans une phrase ("aucun des 181 sujets ne correspond" donnait 181) et
+  // collait a une session un sujet qui n'avait rien a voir avec son travail.
+  const m = rep && rep.trim().match(/^#?(\d{1,4})\.?$/);
   if (!m) {
     // "none" : plus rien de la liste ne correspond. Si le sujet affiche est vieux, on
     // l'EFFACE au lieu de le laisser mentir — pas de 🎯 vaut mieux qu'un faux 🎯.
@@ -269,7 +273,20 @@ async function surStop(d) {
     return false;
   }
   const t = await formaterParNumero(m[1]);
-  return t ? poser(sid, t, "filet") : false;
+  if (!t) return false;
+  // Remplacer un sujet deja affiche demande une CONFIRMATION : le filet doit proposer le
+  // meme sujet deux fois de suite. Sans ca il oscillait d'un sujet a l'autre au fil des
+  // tours (constate le 12/09 sur une session voisine : #181 puis #102, alors que le bon
+  // etait #12). Quand rien n'est affiche, on pose des la premiere deduction.
+  if (etat.texte && etat.texte !== t) {
+    if (etat.candidat !== t) {
+      ecrireEtat(sid, { ...etat, candidat: t, ts: Date.now() });
+      return false;
+    }
+  }
+  const pose = poser(sid, t, "filet");
+  if (pose) ecrireEtat(sid, { ...lireEtat(sid), candidat: null });
+  return pose;
 }
 
 // --- 4. Menage ---------------------------------------------------------------

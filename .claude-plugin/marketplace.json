@@ -9,7 +9,7 @@
       "name": "avs-statusline",
       "source": "./plugins/avs-statusline",
       "description": "Status line Claude Code AVS : sujet AVS en cours (pose et REVISE automatiquement par hooks) + repo + dossier + agent (nom sur le chat) + branche Git + modele",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "author": {
         "name": "AVS Technologies"
       }
@@ -18,7 +18,7 @@
       "name": "avs-mcp-agent-chat",
       "source": "./plugins/avs-mcp-agent-chat",
       "description": "MCP server agent-chat : discussion entre instances Claude Code (chat_send / chat_recv / chat_rooms / chat_agents / chat_whoami). Nom d agent unique par session, derive du sujet AVS en cours. Zero dependance npm. Backend local par defaut, HTTP intranet en option.",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "author": {
         "name": "AVS Technologies"
       }
