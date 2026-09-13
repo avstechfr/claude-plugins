@@ -15,6 +15,8 @@ import { execFileSync } from "node:child_process";
 import { resoudreNom, agentsLocaux, sujetCourant, sessionId } from "./identite.mjs";
 
 const DEFAULT_ROOM = "default";
+// Salon technique ou chaque agent declare son nom : sert d'annuaire entre machines.
+const PRESENCE_ROOM = "__presence";
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
@@ -71,20 +73,23 @@ const AGENT_NAME_FROM_FILE = detectAgentNameFromFile();
 /** Noms actifs vus sur le chat dans les dernieres heures (autres machines comprises).
  *  Best-effort : si le backend ne repond pas, on se rabat sur le registre local. */
 async function nomsDistantsRecents() {
-  try {
-    const messages = await store.fetchSince({ limit: 200 });
-    const limite = Date.now() - 6 * 60 * 60 * 1000;
-    return [
-      ...new Set(
-        messages
-          .filter((m) => !m.ts || new Date(m.ts).getTime() > limite)
-          .map((m) => m.sender)
-          .filter(Boolean),
-      ),
-    ];
-  } catch {
-    return [];
+  // L'API est scopee par salon (sans `room`, elle ne renvoie que `default`) : il faut
+  // donc interroger explicitement l'annuaire `__presence`, ou chaque agent declare son
+  // nom en se figeant. C'est lui qui donne l'unicite entre machines, un agent silencieux
+  // depuis 6 h n'apparaissant pas dans `default`.
+  const noms = new Set();
+  const limite = Date.now() - 6 * 60 * 60 * 1000;
+  for (const room of [DEFAULT_ROOM, PRESENCE_ROOM]) {
+    try {
+      const messages = await store.fetchSince({ room, limit: 200 });
+      for (const m of messages) {
+        if (!m.sender) continue;
+        if (m.ts && new Date(m.ts).getTime() <= limite) continue;
+        noms.add(m.sender);
+      }
+    } catch {}
   }
+  return [...noms];
 }
 
 /** Nom courant. Tant qu'aucun message n'est parti, il se recalcule (le sujet n'est
@@ -215,21 +220,22 @@ class HttpStore {
   }
 
   async listRooms() {
-    // L'intranet n'expose pas de /rooms : l'appeler renvoyait toujours [], ce qui
-    // faisait croire qu'aucune conversation n'existait alors que le salon `default`
-    // en contenait 140. On derive donc les salons des messages eux-memes.
-    try {
-      const data = await this._req("?limit=500", { method: "GET" });
-      const messages = Array.isArray(data) ? data : data.messages || [];
-      const counts = new Map();
-      for (const m of messages) {
-        const r = m.room || DEFAULT_ROOM;
-        counts.set(r, (counts.get(r) || 0) + 1);
-      }
-      return [...counts.entries()].map(([room, count]) => ({ room, count }));
-    } catch {
-      return [];
+    // L'intranet n'expose pas de /rooms : l'appeler renvoyait toujours [], ce qui faisait
+    // croire qu'aucune conversation n'existait alors que `default` en contenait 140.
+    // Il n'expose pas non plus la liste des salons : un GET sans `room` ne renvoie que
+    // `default`. On ne peut donc compter que les salons qu'on connait deja — un salon
+    // ad hoc cree par un autre agent reste invisible tant qu'on n'a pas son nom.
+    const rooms = [];
+    for (const room of [DEFAULT_ROOM, PRESENCE_ROOM]) {
+      try {
+        const data = await this._req(`?room=${encodeURIComponent(room)}&limit=500`, {
+          method: "GET",
+        });
+        const messages = Array.isArray(data) ? data : data.messages || [];
+        if (messages.length) rooms.push({ room, count: messages.length });
+      } catch {}
     }
+    return rooms;
   }
 }
 
@@ -307,7 +313,21 @@ async function handleTool(name, args = {}) {
       const message = String(args.message || "").trim();
       if (!message) throw new Error("`message` est requis et non vide");
       const room = String(args.room || DEFAULT_ROOM);
+      const avant = await nomCourant();
       const { nom } = await nomCourant({ figer: true });
+      // Presence : au moment ou le nom se fige, on le declare dans un salon dedie. C'est
+      // ce qui donne l'unicite ENTRE MACHINES — le registre local ne voit que les
+      // fenetres du poste, et un agent silencieux depuis 6 h n'apparaissait nulle part.
+      // Salon separe pour que `chat_recv` (qui lit `default`) n'en soit pas pollue.
+      if (!avant.fige) {
+        try {
+          await store.append({
+            sender: nom,
+            room: PRESENCE_ROOM,
+            message: `presence ${hostname()} — ${sujetCourant()?.brut || "sans sujet"}`,
+          });
+        } catch {}
+      }
       const stored = await store.append({ sender: nom, room, message });
       return {
         content: [

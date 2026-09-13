@@ -9,7 +9,7 @@
       "name": "avs-statusline",
       "source": "./plugins/avs-statusline",
       "description": "Status line Claude Code AVS : sujet AVS en cours (pose et REVISE automatiquement par hooks) + repo + dossier + agent (nom sur le chat) + branche Git + modele",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "author": {
         "name": "AVS Technologies"
       }

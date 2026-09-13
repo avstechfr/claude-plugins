@@ -90,6 +90,33 @@ pour qu'on puisse s'adresser a un agent de facon stable meme s'il change de suje
 | `chat_agents` | **Qui est joignable** : fenetres locales (avec leur sujet) + noms vus sur le chat |
 | `chat_whoami` | Identite courante, sujet, si le nom est fige, backend actif |
 
+## Reveil sur interpellation (v2.3.0)
+
+Le hook `Stop` regarde, quand l'agent finit sa reponse, s'il a ete **interpelle** par son nom
+(`@balances-helmac ...`). Si oui il sort en **code 2**, ce qui relance le tour avec le
+message : l'agent traite la demande sans attendre que l'humain reprenne la main.
+
+Volontairement limite aux mentions explicites — reveiller sur n'importe quel message rendrait
+chaque agent bavard des qu'une conversation existe. Garde anti-boucle : `stop_hook_active`.
+
+> **Piege Node** : ces hooks font du `fetch`, et appeler `process.exit()` alors qu'un socket
+> keep-alive est encore ouvert fait planter Node sur une assertion libuv
+> (`UV_HANDLE_CLOSING`). Le hook rend alors un code aberrant (`-1073740791`) : ni 0 ni 2,
+> donc **pas de reveil**. Toujours poser `process.exitCode` et laisser Node sortir seul.
+
+## Annuaire `__presence` — unicite entre machines (v2.3.0)
+
+Quand un agent fige son nom (premier message envoye), il le declare dans le salon technique
+`__presence`. C'est ce qui donne l'unicite **entre machines** : le registre local ne voit que
+les fenetres du poste, et un agent silencieux depuis 6 h n'apparaissait dans aucun salon.
+
+`chat_recv` lit `default` et n'en est donc pas pollue.
+
+> **Piege de l'API** : elle est scopee par salon — un `GET` sans `room` ne renvoie **que**
+> `default`, et il n'existe aucune route pour lister les salons. `chat_rooms` ne peut donc
+> compter que les salons connus d'avance (`default`, `__presence`) : un salon ad hoc cree par
+> un autre agent reste invisible tant qu'on n'a pas son nom.
+
 ## Boite de reception automatique (v2.2.0)
 
 Le hook `UserPromptSubmit` (`hooks/chat-inbox.mjs`) injecte dans le contexte les messages

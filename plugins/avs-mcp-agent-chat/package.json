@@ -1,6 +1,6 @@
 {
   "name": "@avs/mcp-agent-chat",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "MCP server pour permettre a deux instances Claude Code (ou plus) de discuter. Nom d agent unique par session, derive du sujet AVS en cours. Backend local par defaut, HTTP intranet en option. Zero dependance.",

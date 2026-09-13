@@ -322,4 +322,7 @@ if (d && d.session_id) {
     // Un hook qui echoue ne doit jamais gener la session : on sort en silence.
   }
 }
-process.exit(0);
+// `process.exitCode` et PAS `process.exit()` : couper le process alors que `fetch` garde un
+// socket keep-alive ouvert fait planter Node sur une assertion libuv, et le hook rend alors
+// un code de sortie aberrant au lieu de 0.
+process.exitCode = 0;

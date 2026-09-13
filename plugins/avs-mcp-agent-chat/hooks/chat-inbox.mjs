@@ -85,42 +85,86 @@ try {
   d = JSON.parse(Buffer.concat(morceaux).toString("utf8"));
 } catch {}
 
+// NB : on sort en posant `process.exitCode`, jamais avec `process.exit()`. Appeler
+// process.exit() alors que `fetch` a encore un socket keep-alive ouvert fait planter Node
+// sur une assertion libuv (« UV_HANDLE_CLOSING »), et le hook rend alors un code de sortie
+// aberrant — Claude Code n'y verrait ni 0 ni 2, donc jamais le reveil.
 const sid = d.session_id;
-if (!sid) process.exit(0);
-
-try {
-  const etat = lireVu(sid);
-  const messages = await messagesDepuis(etat.dernierId);
-  // Premier passage d'une session : on prend acte de l'existant sans le deverser dans
-  // le contexte — sinon l'agent recoit 50 messages d'historique sans rapport.
-  const premierPassage = !etat.dernierId;
-  if (messages.length) {
-    ecrireVu(sid, { dernierId: messages[messages.length - 1].id, ts: Date.now() });
-  }
-  if (!premierPassage && messages.length) {
-    const { nom } = resoudreNom({});
-    const autres = messages.filter((m) => m.sender && m.sender !== nom).slice(-MAX_INJECTES);
-    if (autres.length) {
-      const lignes = autres.map((m) => {
-        const texte = String(m.message).replace(/\s+/g, " ").trim();
-        const coupe = texte.length > MAX_CARS ? texte.slice(0, MAX_CARS) + "… (tronque)" : texte;
-        return `- [${m.room || "default"}] ${m.sender} : ${coupe}`;
-      });
-      process.stdout.write(
-        JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "UserPromptSubmit",
-            additionalContext: [
-              `Messages recus sur le chat inter-agents depuis ton dernier tour (tu es \`${nom}\`) :`,
-              ...lignes,
-              "Reponds-y avec chat_send si c'est attendu de toi ; sinon ignore.",
-            ].join("\n"),
-          },
-        }),
-      );
-    }
-  }
-} catch {
-  // Un hook qui echoue ne doit jamais gener la session.
+if (!sid) {
+  process.exitCode = 0;
+} else {
+  await main();
 }
-process.exit(0);
+
+async function main() {
+
+// --- Reveil (hook Stop) ---------------------------------------------------------
+// L'injection au tour suivant ne suffit pas : si personne ne parle a l'agent, il ne
+// repart jamais. Ici, quand il finit sa reponse, on regarde s'il a ete INTERPELLE
+// (`@son-nom`) ; si oui on sort en code 2, ce qui relance le tour avec le message.
+// Deliberement limite aux mentions explicites : reveiller sur tout message rendrait
+// chaque agent bavard des qu'une conversation existe.
+if ((d.hook_event_name || "") === "Stop") {
+  if (d.stop_hook_active) return; // relance imbriquee : on s'arrete la
+  try {
+    const etat = lireVu(sid);
+    const { nom } = resoudreNom({});
+    const messages = await messagesDepuis(etat.dernierId);
+    const pourMoi = messages.filter(
+      (m) => m.sender && m.sender !== nom && new RegExp(`@${nom}\\b`, "i").test(String(m.message)),
+    );
+    if (pourMoi.length) {
+      ecrireVu(sid, { ...etat, dernierId: messages[messages.length - 1].id, ts: Date.now() });
+      const resume = pourMoi
+        .slice(-2)
+        .map((m) => `${m.sender} : ${String(m.message).replace(/\s+/g, " ").slice(0, MAX_CARS)}`)
+        .join("\n");
+      process.stderr.write(
+        `Tu viens d'etre interpelle sur le chat inter-agents (tu es \`${nom}\`) :\n${resume}\n` +
+          "Traite la demande si elle te concerne, puis reponds avec chat_send. " +
+          "Si elle ne te concerne pas, dis-le en une ligne et arrete-toi.\n",
+      );
+      process.exitCode = 2; // 2 = relance le tour avec ce texte
+      return;
+    }
+  } catch {}
+  return;
+}
+
+  try {
+    const etat = lireVu(sid);
+    const messages = await messagesDepuis(etat.dernierId);
+    // Premier passage d'une session : on prend acte de l'existant sans le deverser dans
+    // le contexte — sinon l'agent recoit 50 messages d'historique sans rapport.
+    const premierPassage = !etat.dernierId;
+    if (messages.length) {
+      ecrireVu(sid, { dernierId: messages[messages.length - 1].id, ts: Date.now() });
+    }
+    if (!premierPassage && messages.length) {
+      const { nom } = resoudreNom({});
+      const autres = messages.filter((m) => m.sender && m.sender !== nom).slice(-MAX_INJECTES);
+      if (autres.length) {
+        const lignes = autres.map((m) => {
+          const texte = String(m.message).replace(/\s+/g, " ").trim();
+          const coupe = texte.length > MAX_CARS ? texte.slice(0, MAX_CARS) + "… (tronque)" : texte;
+          return `- [${m.room || "default"}] ${m.sender} : ${coupe}`;
+        });
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "UserPromptSubmit",
+              additionalContext: [
+                `Messages recus sur le chat inter-agents depuis ton dernier tour (tu es \`${nom}\`) :`,
+                ...lignes,
+                "Reponds-y avec chat_send si c'est attendu de toi ; sinon ignore.",
+              ].join("\n"),
+            },
+          }),
+        );
+      }
+    }
+  } catch {
+    // Un hook qui echoue ne doit jamais gener la session.
+  }
+  process.exitCode = 0;
+}
