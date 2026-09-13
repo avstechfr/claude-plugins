@@ -17,6 +17,16 @@ import { resoudreNom, agentsLocaux, sujetCourant, sessionId } from "./identite.m
 const DEFAULT_ROOM = "default";
 // Salon technique ou chaque agent declare son nom : sert d'annuaire entre machines.
 const PRESENCE_ROOM = "__presence";
+
+const VERSION = (() => {
+  try {
+    return JSON.parse(
+      readFileSync(new URL("./.claude-plugin/plugin.json", import.meta.url), "utf8"),
+    ).version;
+  } catch {
+    return "inconnue";
+  }
+})();
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
@@ -462,7 +472,9 @@ async function handleRequest(req) {
       return {
         protocolVersion: req.params?.protocolVersion || "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "avs-agent-chat", version: "2.1.0" },
+        // Version lue sur le disque : ecrite en dur, elle restait figee a une vieille
+        // valeur et faisait croire qu'une autre copie du serveur etait chargee.
+        serverInfo: { name: "avs-agent-chat", version: VERSION },
       };
     case "tools/list":
       return { tools: TOOLS };
