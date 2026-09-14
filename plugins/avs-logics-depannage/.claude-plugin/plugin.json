@@ -1,0 +1,9 @@
+{
+  "name": "avs-logics-depannage",
+  "description": "Depannage Logic'S chez le client (V2 et V3) : skill /logics-depannage pour le diagnostic guide en intervention, + subagent logics-depannage pour les fouilles KB / logs / machine. Couvre caisse et Automate, bases HFSQL, peripheriques, poste-reseau, Cloud et licences.",
+  "version": "1.1.0",
+  "author": {
+    "name": "AVS Technologies",
+    "url": "https://avs-technologies.fr"
+  }
+}

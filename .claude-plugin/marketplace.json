@@ -31,6 +31,15 @@
       "author": {
         "name": "AVS Technologies"
       }
+    },
+    {
+      "name": "avs-logics-depannage",
+      "source": "./plugins/avs-logics-depannage",
+      "description": "Depannage Logic'S chez le client (V2 et V3) pour les techniciens : skill logics-depannage (methode guidee + fiches caisse, Automate, HFSQL, peripheriques, poste-reseau, Cloud, cloture NF-525) et subagent logics-depannage (enquete de diagnostic en lecture seule).",
+      "version": "1.1.0",
+      "author": {
+        "name": "AVS Technologies"
+      }
     }
   ]
 }
