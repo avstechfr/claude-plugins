@@ -57,6 +57,8 @@ $Settings['enabledPlugins']['avs-mcp-agent-chat@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-kb@avs-plugins'] = $true
 # Depannage Logic'S : c'est le plugin que les techniciens attendent sur le terrain.
 $Settings['enabledPlugins']['avs-logics-depannage@avs-plugins'] = $true
+# Verrous de sous-projet : evite que deux agents modifient le meme sous-projet en meme temps.
+$Settings['enabledPlugins']['avs-locks@avs-plugins'] = $true
 
 # --- 4. statusLine via launcher stable (workaround Anthropic) ---
 # Trois pieges resolus ici :

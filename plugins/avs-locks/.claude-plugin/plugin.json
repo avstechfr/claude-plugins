@@ -1,0 +1,9 @@
+{
+  "name": "avs-locks",
+  "description": "Verrous de sous-projet AVS : acquiert automatiquement le verrou avant d ecrire dans un sous-projet du repo avs, refuse l ecriture si un autre agent le tient, et libere au git push ou en fin de session. Applique le process #74 sans dependre de la bonne volonte de l agent.",
+  "version": "1.0.0",
+  "author": {
+    "name": "AVS Technologies",
+    "url": "https://avs-technologies.fr"
+  }
+}
