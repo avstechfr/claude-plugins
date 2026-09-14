@@ -88,9 +88,11 @@ if (Test-Path "$clone\.claude-plugin\marketplace.json") {
                 Note 'Versions' $p.name 'ATTENTION' "marketplace $($p.version), rien en cache" "/plugin install $($p.name)@avs-plugins"
             } else {
                 # Tri par version sans passer par [version] : le cache contient parfois des
-                # dossiers nommes par hash de commit, qui font echouer la conversion et
-                # renvoyaient une version fantome ("installe 0").
-                $derniere = ($installees | Sort-Object { ($_ -split '[.\-]' | ForEach-Object { $_.PadLeft(6, '0') }) -join '.' })[-1]
+                # dossiers nommes par hash de commit, qui font echouer la conversion.
+                # Le @(...) est indispensable : avec UNE seule version installee,
+                # Sort-Object renvoie une chaine et [-1] prend son dernier CARACTERE
+                # ("1.0.0" devenait "0", d'ou un faux "mise a jour disponible").
+                $derniere = @($installees | Sort-Object { ($_ -split '[.\-]' | ForEach-Object { $_.PadLeft(6, '0') }) -join '.' })[-1]
                 if ($derniere -ne $p.version) {
                     Note 'Versions' $p.name 'ATTENTION' "installe $derniere, disponible $($p.version)" "/plugin update $($p.name)"
                 } else {
