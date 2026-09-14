@@ -2,7 +2,7 @@
 # bootstrap-avs.ps1
 # Configure Claude Code d'un nouveau poste AVS en une seule commande :
 #   - Cle extraKnownMarketplaces -> github.com/avstechfr/claude-plugins
-#   - Cle enabledPlugins -> avs-statusline + avs-mcp-agent-chat
+#   - Cle enabledPlugins -> avs-statusline + avs-mcp-agent-chat + avs-mcp-kb + avs-logics-depannage
 #   - Cle statusLine pointant (chemin ABSOLU, jamais ~) vers un launcher
 #     ~/.claude/avs-statusline-launcher.sh qui suit automatiquement la derniere
 #     version du plugin en cache
@@ -55,6 +55,8 @@ if (-not $Settings.ContainsKey('enabledPlugins')) {
 $Settings['enabledPlugins']['avs-statusline@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-agent-chat@avs-plugins'] = $true
 $Settings['enabledPlugins']['avs-mcp-kb@avs-plugins'] = $true
+# Depannage Logic'S : c'est le plugin que les techniciens attendent sur le terrain.
+$Settings['enabledPlugins']['avs-logics-depannage@avs-plugins'] = $true
 
 # --- 4. statusLine via launcher stable (workaround Anthropic) ---
 # Trois pieges resolus ici :
