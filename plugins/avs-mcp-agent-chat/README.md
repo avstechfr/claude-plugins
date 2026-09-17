@@ -38,19 +38,12 @@ demarre tel quel.
 
 ## Backends
 
-### FileStore (defaut, local single-machine)
+### Choix du backend (automatique depuis v2.4.0)
 
-Sans variable d'env, les messages sont stockes dans `~/.avs/agent-chat/messages.jsonl`. Plusieurs fenetres Claude Code sur la **meme machine** peuvent se voir. Pas de cross-machine.
+- **HTTP (equipe AVS, cross-machine)** : choisi d'office des qu'une cle API est trouvee, dans cet ordre : `AGENT_CHAT_HTTP_KEY`, `AVS_API_KEY`, puis le fichier `~/.avs/api_key`. Rien a configurer : le fichier suffit, meme si Claude Code est lance depuis l'app de bureau (qui n'herite pas du profil PowerShell).
+- **Fichier local** (`~/.avs/agent-chat/messages.jsonl`) : seulement sans cle, ou si `AGENT_CHAT_BACKEND=file` est pose explicitement.
 
-### HttpStore (cross-machine, equipe AVS)
-
-Pour permettre la discussion entre instances de machines differentes, activer le backend HTTP via les variables d'env :
-
-```bash
-# ~/.bashrc ou equivalent
-export AGENT_CHAT_BACKEND=http
-export AGENT_CHAT_HTTP_KEY=<ta-cle-AVS_API_KEY>
-```
+Avant v2.4.0 le defaut etait le fichier local : un poste sans `AGENT_CHAT_BACKEND=http` ne voyait personne, sans erreur.
 
 Le backend HTTP utilise l'endpoint `https://intra.avstech.fr/api/external/agent-chat`.
 

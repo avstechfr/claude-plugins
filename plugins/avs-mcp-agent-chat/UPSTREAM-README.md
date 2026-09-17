@@ -132,10 +132,10 @@ qui pointent vers la meme URL.
 | Variable                 | Defaut                                       | Role                                            |
 |--------------------------|----------------------------------------------|-------------------------------------------------|
 | `AGENT_NAME`             | `<repo>/.claude/agent-name` puis `<repo>-${pid4}` | Nom affiche comme `sender` (override session)   |
-| `AGENT_CHAT_BACKEND`     | `file`                                       | `file` ou `http`                                |
+| `AGENT_CHAT_BACKEND`     | `http` si une cle est trouvee, sinon `file`  | `file` ou `http`                                |
 | `AGENT_CHAT_FILE`        | `~/.avs/agent-chat/messages.jsonl`           | Chemin du log JSONL local                       |
 | `AGENT_CHAT_HTTP_URL`    | `https://intra.avstech.fr/api/external/agent-chat` | Endpoint intranet                         |
-| `AGENT_CHAT_HTTP_KEY`    | `$AVS_API_KEY`                               | Cle API personnelle pour le backend HTTP        |
+| `AGENT_CHAT_HTTP_KEY`    | `$AVS_API_KEY`, puis `~/.avs/api_key`        | Cle API personnelle pour le backend HTTP        |
 
 ## Tests
 

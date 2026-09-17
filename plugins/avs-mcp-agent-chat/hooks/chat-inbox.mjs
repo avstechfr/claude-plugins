@@ -53,7 +53,7 @@ function cleApi() {
 
 async function messagesDepuis(since) {
   // Meme choix de backend que le serveur MCP : HTTP si configure, fichier sinon.
-  if ((process.env.AGENT_CHAT_BACKEND || "file").toLowerCase() === "http") {
+  if ((process.env.AGENT_CHAT_BACKEND || (cleApi() ? "http" : "file")).toLowerCase() === "http") {
     const cle = cleApi();
     if (!cle) return [];
     // L'intranet renvoie les `limit` messages les PLUS ANCIENS (pas de `order` ni

@@ -56,10 +56,16 @@ if (-not $Settings) {
     Note 'Config' 'marketplace avs-plugins' ($(if ($mk) { 'OK' } else { 'MANQUE' })) `
         $(if ($mk) { "-> $($mk.source.repo)" } else { 'non declare' }) 'lancer bootstrap-avs.ps1'
 
-    foreach ($p in @('avs-statusline', 'avs-mcp-agent-chat', 'avs-mcp-kb', 'avs-logics-depannage')) {
+    # Liste lue en direct : un plugin ajoute au depot est verifie sans toucher ce script.
+    $attendusPlugins = @('avs-statusline', 'avs-mcp-agent-chat', 'avs-mcp-kb', 'avs-logics-depannage', 'avs-locks')
+    try {
+        $mkRef = Invoke-RestMethod 'https://raw.githubusercontent.com/avstechfr/claude-plugins/main/.claude-plugin/marketplace.json' -TimeoutSec 20
+        if ($mkRef.plugins) { $attendusPlugins = @($mkRef.plugins | ForEach-Object { $_.name }) }
+    } catch {}
+    foreach ($p in $attendusPlugins) {
         $actif = $Settings.enabledPlugins."$p@avs-plugins"
         Note 'Plugins' $p ($(if ($actif -eq $true) { 'OK' } else { 'MANQUE' })) `
-            $(if ($actif -eq $true) { 'active' } else { 'non active' }) "/plugin install $p@avs-plugins"
+            $(if ($actif -eq $true) { 'active' } else { 'non active' }) 'relancer bootstrap-avs.ps1 (active tous les plugins AVS)'
     }
 
     $sl = $Settings.statusLine.command
@@ -85,7 +91,7 @@ if (Test-Path "$clone\.claude-plugin\marketplace.json") {
             $cacheDir = Join-Path $ClaudeDir "plugins\cache\avs-plugins\$($p.name)"
             $installees = @(Get-ChildItem $cacheDir -Directory -ErrorAction SilentlyContinue | Select-Object -Expand Name)
             if (-not $installees) {
-                Note 'Versions' $p.name 'ATTENTION' "marketplace $($p.version), rien en cache" "/plugin install $($p.name)@avs-plugins"
+                Note 'Versions' $p.name 'ATTENTION' "marketplace $($p.version), rien en cache" 'relancer bootstrap-avs.ps1 (active tous les plugins AVS)'
             } else {
                 # Tri par version sans passer par [version] : le cache contient parfois des
                 # dossiers nommes par hash de commit, qui font echouer la conversion.
@@ -122,21 +128,37 @@ if (Test-Path $ClaudeJson) {
 }
 
 # --- 5. Cle API AVS ---------------------------------------------------------
-$cle = $env:AVS_API_KEY
-if (-not $cle -and (Test-Path (Join-Path $HOME ".avs\api_key"))) {
-    $cle = (Get-Content (Join-Path $HOME ".avs\api_key") -Raw).Trim()
+# Les plugins (KB, chat, verrous, statusline) sont lances par Claude Code, qui n'herite
+# PAS du profil PowerShell quand il demarre depuis l'app de bureau ou VS Code. Le
+# fichier ~/.avs/api_key est donc la reference ; la variable seule ne suffit pas.
+$cleFichier = Join-Path $HOME ".avs\api_key"
+$cle = $null
+if (Test-Path $cleFichier) { $cle = ([System.IO.File]::ReadAllText($cleFichier)).Trim([char]0xFEFF, ' ', "`r", "`n", "`t") }
+if (-not $cle -and $env:AVS_API_KEY) {
+    Note 'Acces' '~/.avs/api_key' 'ATTENTION' 'cle seulement dans la variable AVS_API_KEY : invisible des plugins hors PowerShell' 'relancer bootstrap-avs.ps1 (ecrit le fichier)'
+    $cle = $env:AVS_API_KEY
 }
 if (-not $cle) {
     # Sans cle, la skill de depannage et le MCP KB sont aveugles : l'agent parait
     # mauvais alors qu'il n'a simplement acces a rien.
-    Note 'Acces' 'AVS_API_KEY' 'MANQUE' 'ni variable d env ni ~/.avs/api_key' 'recuperer sa cle sur https://intra.avstech.fr/api-keys puis setx AVS_API_KEY <cle>'
+    Note 'Acces' 'cle API AVS' 'MANQUE' 'ni ~/.avs/api_key ni variable AVS_API_KEY' 'relancer bootstrap-avs.ps1 (demande la cle, https://intra.avstech.fr/api-keys)'
 } else {
     try {
         $r = Invoke-RestMethod -Uri 'https://intra.avstech.fr/api/external/onboarding' -Headers @{ 'X-API-Key' = $cle } -TimeoutSec 15
-        Note 'Acces' 'AVS_API_KEY' 'OK' "valide ($($r.user.name ?? $r.user.email ?? 'compte reconnu'))" ''
+        $qui = if ($r.agent.name) { $r.agent.name } elseif ($r.user.name) { $r.user.name } else { 'compte reconnu' }
+        Note 'Acces' 'cle API AVS' 'OK' "valide ($qui)" ''
     } catch {
-        Note 'Acces' 'AVS_API_KEY' 'ATTENTION' "presente mais refusee par l intranet : $($_.Exception.Message)" 'verifier la cle sur https://intra.avstech.fr/api-keys'
+        Note 'Acces' 'cle API AVS' 'MANQUE' "presente mais refusee par l intranet : $($_.Exception.Message)" 'relancer bootstrap-avs.ps1 et coller la cle de https://intra.avstech.fr/api-keys'
     }
+}
+
+# Chat inter-agents : backend HTTP automatique avec une cle (plugin >= 2.4.0), sauf
+# reglage explicite "file" herite d'une ancienne consigne.
+$backend = [Environment]::GetEnvironmentVariable('AGENT_CHAT_BACKEND', 'User')
+if ($backend -eq 'file' -or $env:AGENT_CHAT_BACKEND -eq 'file') {
+    Note 'Acces' 'chat inter-agents' 'ATTENTION' 'AGENT_CHAT_BACKEND=file : chat local, ne voit pas les autres postes' 'setx AGENT_CHAT_BACKEND http'
+} elseif ($cle) {
+    Note 'Acces' 'chat inter-agents' 'OK' 'backend intranet (partage equipe)' ''
 }
 
 # --- 6. Repos clones --------------------------------------------------------
@@ -185,7 +207,7 @@ if ($Json) {
 }
 
 Write-Host ""
-Write-Host "=== Diagnostic poste AVS — $env:COMPUTERNAME / $env:USERNAME ===" -ForegroundColor Cyan
+Write-Host "=== Diagnostic poste AVS - $env:COMPUTERNAME / $env:USERNAME ===" -ForegroundColor Cyan
 Write-Host ""
 foreach ($cat in ($resultats | Select-Object -Expand categorie -Unique)) {
     Write-Host "$cat" -ForegroundColor Cyan
