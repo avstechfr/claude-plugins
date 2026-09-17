@@ -1,5 +1,7 @@
 # claude-plugins (AVS Technologies)
 
+> Documentation fonctionnelle (usage, installation, problemes connus, deploiement equipe) : [`docs/fonctionnel.md`](docs/fonctionnel.md)
+
 Marketplace privee Claude Code de AVS Technologies. Plugins partages a toute l'equipe AVS pour avoir une experience uniforme Claude Code (statusline, MCP, hooks, skills) sur tous les postes et tous les repos.
 
 ## Installer sur un poste (une commande, pas de compte GitHub)
