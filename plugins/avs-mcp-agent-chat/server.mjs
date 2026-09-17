@@ -110,15 +110,30 @@ async function nomCourant({ figer = false } = {}) {
   return resoudreNom({ occupesDistants, figer });
 }
 
-const BACKEND = (process.env.AGENT_CHAT_BACKEND || "file").toLowerCase();
+const HTTP_URL =
+  process.env.AGENT_CHAT_HTTP_URL || "https://intra.avstech.fr/api/external/agent-chat";
+// Cle : variables d'env, sinon ~/.avs/api_key (meme contrat que avs-mcp-kb et avs-locks).
+// Le fichier compte : lance depuis l'app de bureau ou un autre terminal, Claude Code
+// n'herite pas du profil PowerShell, et une cle posee la seule y etait invisible.
+const HTTP_KEY = (() => {
+  const env = process.env.AGENT_CHAT_HTTP_KEY || process.env.AVS_API_KEY;
+  if (env) return env.trim();
+  try {
+    return readFileSync(path.join(homedir(), ".avs", "api_key"), "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+})();
+
+// Backend : HTTP (partage entre machines) des qu'une cle est disponible, sauf choix
+// explicite. Avant le 17/09/2026 le defaut etait "file" : un poste sans
+// AGENT_CHAT_BACKEND=http tournait en local, sans erreur, et ne voyait personne.
+const BACKEND = (process.env.AGENT_CHAT_BACKEND || (HTTP_KEY ? "http" : "file")).toLowerCase();
 
 const FILE_PATH =
   process.env.AGENT_CHAT_FILE ||
   path.join(homedir(), ".avs", "agent-chat", "messages.jsonl");
 
-const HTTP_URL =
-  process.env.AGENT_CHAT_HTTP_URL || "https://intra.avstech.fr/api/external/agent-chat";
-const HTTP_KEY = process.env.AGENT_CHAT_HTTP_KEY || process.env.AVS_API_KEY;
 
 function newId() {
   return `${new Date().toISOString()}-${randomBytes(3).toString("hex")}`;
