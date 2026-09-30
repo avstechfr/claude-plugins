@@ -12,7 +12,7 @@ liste d'outils sert de rappel, et la friction du `curl` disparaît.
 | `kb_get` | Lit un nœud complet par id (kb_search tronque le contenu à 200 caractères). |
 | `kb_save` | Crée ou met à jour un nœud. Refuse un secret en visibility public. |
 | `kb_link` | Crée une relation entre deux nœuds (un nœud orphelin est invisible en traversée). |
-| `kb_log` | Journalise une leçon apprise / action significative et la relie automatiquement au meilleur voisin sémantique du graphe. |
+| `kb_log` | Journalise une leçon apprise / action significative, la range dans sa branche d'ossature (`part_of`) et la relie au meilleur voisin sémantique. |
 
 ## Installation
 
@@ -44,8 +44,13 @@ métriques d'usage KB de la page api-keys.
   double-encodage UTF-8 de l'API externe.
 - `kb_save`/`kb_log` refusent un contenu qui ressemble à un secret (mot de passe, clé, token)
   si `visibility` = public — règle AVS : secret → `admin`.
-- `kb_log` fait l'auto-maillage : query sémantique sur le titre, edge `related_to` vers le
-  meilleur voisin trouvé.
+- `kb_log` fait l'auto-maillage (v1.1.0) : query sémantique sur le titre + le début du contenu.
+  1. **Branche** : lien `part_of` vers un nœud `Ossature — …` (tag `ossature`, miroir de la carte
+     `/organisation`). Soit celle passée en paramètre `branche`, soit une branche remontée par la
+     recherche, soit la branche du meilleur voisin.
+  2. **Voisin** : lien `related_to` vers la fiche la plus proche, jamais vers un nœud d'ossature.
+  Avant la v1.1.0, le lien `related_to` partait vers le premier résultat, souvent un nœud très
+  général (« AVS Technologies », « GK41 ») : la KB était devenue une étoile (audit du 30/09/2026).
 
 ## Test
 

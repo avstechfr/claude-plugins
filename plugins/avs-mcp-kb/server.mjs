@@ -115,7 +115,9 @@ const TOOLS = [
   {
     name: "kb_log",
     description:
-      "Journalise une lecon apprise ou une action significative : cree un noeud resource ET le relie automatiquement au noeud le plus proche du graphe. " +
+      "Journalise une lecon apprise ou une action significative : cree un noeud resource, le range dans sa branche d'ossature " +
+      "(noeuds 'Ossature — ...' = carte /organisation, lien part_of) et le relie a la fiche la plus proche. " +
+      "Passe 'branche' (id d'un noeud Ossature) si tu sais ou ranger la fiche, sinon la branche du meilleur voisin est reprise. " +
       "A utiliser quand un probleme est resolu (symptome, cause racine, solution) ou en fin d'intervention. " +
       "Ne documenter que le SURPRENANT ou CONTRE-INTUITIF, pas ce qui est deja dans le code.",
     inputSchema: {
@@ -125,6 +127,7 @@ const TOOLS = [
         content: { type: "string", description: "Markdown : symptome, cause, solution, comment eviter" },
         tags: { type: "array", items: { type: "string" } },
         visibility: { type: "string", description: "public | restricted | admin (defaut public)" },
+        branche: { type: "string", description: "Optionnel : id du noeud 'Ossature — ...' ou ranger la fiche (kb_search 'Ossature <domaine>')" },
       },
       required: ["title", "content"],
     },
@@ -210,23 +213,47 @@ async function handleTool(name, args) {
         );
       }
       const id = await createNode({ ...args, type: "resource" });
-      // Auto-maillage : relier au meilleur voisin semantique
+      // Maillage : 1) ranger dans une branche d'ossature (part_of), 2) relier a la fiche voisine
+      // la plus proche. Les noeuds d'ossature ne sont jamais pris comme "voisin" : relier en
+      // related_to au noeud le plus general transformait le graphe en etoile (audit 30/09/2026).
+      const isOssature = (n) => (n.tags || []).includes("ossature");
+      let branch = args.branche || null;
+      let branchName = branch;
       let linked = null;
       try {
         const ctx = await api("POST", "knowledge/context", {
-          query: args.title,
-          maxNodes: 5,
+          query: `${args.title}\n${(args.content || "").slice(0, 300)}`,
+          maxNodes: 8,
           maxDepth: 1,
           includeEntities: false,
         });
-        const best = (ctx.nodes || []).find((n) => n.id !== id);
+        const nodes = (ctx.nodes || []).filter((n) => n.id !== id);
+        const best = nodes.find((n) => !isOssature(n));
+        if (!branch) {
+          const oss = nodes.find(isOssature);
+          if (oss) { branch = oss.id; branchName = oss.title; }
+        }
+        if (!branch && best) {
+          const r = await api("GET", `knowledge/edges?sourceId=${best.id}&type=part_of&limit=20`);
+          const up = (r.edges || []).find((e) => (e.target?.title || "").startsWith("Ossature"));
+          if (up) { branch = up.targetId; branchName = up.target.title; }
+        }
         if (best) {
           await api("POST", "knowledge/edges", { sourceId: id, targetId: best.id, type: "related_to" });
           linked = best.title;
         }
       } catch { /* le log reste valide meme sans maillage */ }
+      let filed = false;
+      if (branch) {
+        try {
+          await api("POST", "knowledge/edges", { sourceId: id, targetId: branch, type: "part_of" });
+          filed = true;
+        } catch { /* branche invalide : signale dans le retour */ }
+      }
       return textResult(
-        `Lecon/action journalisee : noeud ${id}` + (linked ? `, relie a "${linked}".` : " (aucun voisin trouve pour le maillage, pense a kb_link).")
+        `Lecon/action journalisee : noeud ${id}` +
+          (filed ? `, rangee dans "${branchName}"` : ", SANS branche (fais kb_link part_of vers un noeud 'Ossature — ...')") +
+          (linked ? `, reliee a "${linked}".` : ".")
       );
     }
     default:

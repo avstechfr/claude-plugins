@@ -1,7 +1,7 @@
 {
   "name": "avs-mcp-kb",
   "description": "MCP server base de connaissances AVS : la KB comme outil natif (kb_search avant d'agir, kb_log apres). Auth via AVS_API_KEY ou ~/.avs/api_key.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "AVS Technologies",
     "url": "https://avs-technologies.fr"

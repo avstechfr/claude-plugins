@@ -68,8 +68,8 @@ try {
   const search = await rpc("tools/call", { name: "kb_search", arguments: { query: "Logic Display affichage", maxNodes: 5 } });
   check("kb_search trouve Logic Display", toolText(search).includes("Logic Display"), toolText(search).slice(0, 150));
 
-  const get = await rpc("tools/call", { name: "kb_get", arguments: { id: "cmktu2o96001d4b9c5ts94041" } });
-  check("kb_get lit le noeud API Gmail", toolText(get).includes("API Gmail"), toolText(get).slice(0, 150));
+  const get = await rpc("tools/call", { name: "kb_get", arguments: { id: "cmrbexgxr1w7q4bewjj11z51k" } });
+  check("kb_get lit le noeud Emails / Gmail", toolText(get).includes("Gmail"), toolText(get).slice(0, 150));
 
   const refuse = await rpc("tools/call", {
     name: "kb_save",
@@ -79,11 +79,12 @@ try {
 
   const log = await rpc("tools/call", {
     name: "kb_log",
-    arguments: { title: "Smoke test avs-mcp-kb (a supprimer)", content: "Noeud de test du MCP KB, supprime automatiquement.", tags: ["test"] },
+    arguments: { title: "Smoke test avs-mcp-kb Logic Display (a supprimer)", content: "Noeud de test du MCP KB sur l'affichage dynamique Logic Display, supprime automatiquement.", tags: ["test"] },
   });
   const logText = toolText(log);
   const nodeId = (logText.match(/noeud (\w+)/) || [])[1];
   check("kb_log cree et maille un noeud", Boolean(nodeId) && logText.includes("relie"), logText.slice(0, 200));
+  check("kb_log range le noeud dans une branche d'ossature", logText.includes("rangee dans"), logText.slice(0, 200));
 
   // Nettoyage : suppression directe via l'API
   if (nodeId) {
