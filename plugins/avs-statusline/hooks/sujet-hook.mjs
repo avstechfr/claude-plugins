@@ -94,6 +94,15 @@ function numeroDansTexte(texte) {
 /** Titre de sujet cite en toutes lettres ("on bosse sur Rhomeo"). Exige au moins deux
  *  mots significatifs communs pour eviter qu'un "site" ou "caisse" isole ne matche
  *  la moitie du portefeuille. */
+// Mots trop courants pour designer un sujet a eux seuls (exclus de parTitre).
+// 12/10/2026 : « la barre dans la fenetre Claude Code ne se met pas a jour » collait
+// « #181 Outillage agents Claude Code » a une session qui travaillait le Pad.
+const MOTS_GENERIQUES = new Set([
+  "claude", "code", "logic", "logics", "caisse", "caisses", "demande", "client", "clients",
+  "avec", "pour", "dans", "plus", "sans", "sont", "fait", "faire", "suivi", "global",
+  "projet", "produit", "application", "version", "mise", "jour", "commande", "contrat",
+]);
+
 function parTitre(texte, sujets) {
   const mots = (s) =>
     new Set(
@@ -102,7 +111,7 @@ function parTitre(texte, sujets) {
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .split(/[^a-z0-9']+/)
-        .filter((m) => m.length >= 4)
+        .filter((m) => m.length >= 4 && !MOTS_GENERIQUES.has(m))
     );
   const dits = mots(texte);
   if (dits.size === 0) return null;
@@ -178,6 +187,33 @@ function derniersMessagesUtilisateur(transcriptPath, n = 8) {
   }
 }
 
+/** Debut des derniers messages de l'AGENT. Quand l'humain dicte peu (« on enchaine »)
+ *  ou deforme les noms (« logique SPAD » pour Logic'S Pad), seul ce que fait l'agent
+ *  dit sur quoi on travaille : sans ca le filet repondait none et la barre restait vide
+ *  toute la session (constat 12/10/2026). Tronque : ces messages sont longs. */
+function derniersMessagesAgent(transcriptPath, n = 4) {
+  try {
+    const lignes = fs.readFileSync(transcriptPath, "utf8").trim().split("\n");
+    const out = [];
+    for (let i = lignes.length - 1; i >= 0 && out.length < n; i--) {
+      let e;
+      try {
+        e = JSON.parse(lignes[i]);
+      } catch {
+        continue;
+      }
+      if (e.type !== "assistant" || !e.message) continue;
+      const c = e.message.content;
+      const texte = typeof c === "string" ? c : (c || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      if (!texte || texte.length < 20) continue;
+      out.unshift(texte.replace(/\s+/g, " ").slice(0, 300));
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 function claudeP(prompt) {
   return new Promise((resolve) => {
     let sortie = "";
@@ -234,7 +270,8 @@ async function surStop(d) {
   if (!apiKey()) return false;
 
   const messages = derniersMessagesUtilisateur(d.transcript_path);
-  if (messages.length === 0) return false;
+  const agent = derniersMessagesAgent(d.transcript_path);
+  if (messages.length === 0 && agent.length === 0) return false;
   const sujets = await listeSujets();
   if (sujets.length === 0) return false;
 
@@ -243,11 +280,17 @@ async function surStop(d) {
     "Voici la liste des sujets ouverts d'une entreprise, au format numero|titre :",
     catalogue,
     "",
-    "Voici les derniers messages d'un utilisateur a son assistant de developpement :",
+    "Voici les derniers messages d'un utilisateur a son assistant de developpement",
+    "(dictes a la voix : les noms propres peuvent etre deformes) :",
     messages.map((m) => "- " + m).join("\n"),
     "",
-    "Sur quel sujet de la liste porte le travail EN COURS ? Les derniers messages priment :",
+    "Et le debut des dernieres reponses de l'assistant (ce qu'il fait reellement) :",
+    agent.map((m) => "- " + m).join("\n"),
+    "",
+    "Sur quel sujet de la liste porte le travail EN COURS ? Les derniers echanges priment :",
     "si la conversation a change de sujet en route, reponds sur le sujet actuel, pas celui du debut.",
+    "Quand l'utilisateur ne nomme pas le sujet, deduis-le du travail de l'assistant",
+    "(client, produit, fonctionnalite cites).",
     "Dans le doute, reponds none : un sujet faux est pire que pas de sujet.",
     "Reponds UNIQUEMENT le numero, rien d'autre (ex: 172), ou none.",
   ].join("\n");
