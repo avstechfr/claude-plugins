@@ -1,0 +1,8 @@
+[
+  {
+    "name": "chat-mentions",
+    "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/watch-mentions.mjs\"",
+    "description": "Chat inter-agents : on t'interpelle (@ton-nom ou @tous)",
+    "when": "always"
+  }
+]
