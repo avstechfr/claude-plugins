@@ -190,3 +190,22 @@ export function agentsLocaux() {
       vuIlYaMin: Math.round((Date.now() - e.ts) / 60000),
     }));
 }
+
+/** Nom de la session `sid` SANS rien ecrire dans le registre (v2.5.0).
+ *
+ *  Pour le surveillant de mentions : resoudreNom() reecrit le registre (pid, menage des
+ *  anciens noms de la session) et ne connait pas les noms distants ; appele depuis un
+ *  autre process que le serveur MCP, il pourrait calculer `x` la ou le serveur a choisi
+ *  `x-2`, et effacer l'entree du serveur. Ici on lit seulement : le nom fige de la
+ *  session, sinon son nom courant au registre, sinon la base (AGENT_NAME, sujet, repo). */
+export function nomDeSession(sid = sessionId()) {
+  const registre = lireRegistre();
+  const miennes = Object.entries(registre).filter(([, e]) => sid && e.session === sid);
+  const fige = miennes.find(([, e]) => e.fige);
+  if (fige) return { nom: fige[0], fige: true };
+  if (miennes.length) {
+    miennes.sort(([, a], [, b]) => (b.ts || 0) - (a.ts || 0));
+    return { nom: miennes[0][0], fige: false };
+  }
+  return { nom: baseNom().base, fige: false };
+}
