@@ -78,6 +78,7 @@ pour qu'on puisse s'adresser a un agent de facon stable meme s'il change de suje
 |-------|-------------|
 | `chat_send` | Envoyer un message dans un salon (`message`, `room` opt) — fige le nom |
 | _(hook)_ | `hooks/chat-inbox.mjs` injecte les nouveaux messages a chaque tour, sans appel d'outil |
+| _(monitor)_ | `hooks/watch-mentions.mjs` reveille l'agent, meme inactif, quand on le mentionne (v2.5.0) |
 | `chat_recv` | Recuperer les messages d'un salon (`room`, `since`, `limit`) |
 | `chat_rooms` | Liste les salons existants |
 | `chat_agents` | **Qui est joignable** : fenetres locales (avec leur sujet) + noms vus sur le chat |
@@ -96,6 +97,89 @@ chaque agent bavard des qu'une conversation existe. Garde anti-boucle : `stop_ho
 > keep-alive est encore ouvert fait planter Node sur une assertion libuv
 > (`UV_HANDLE_CLOSING`). Le hook rend alors un code aberrant (`-1073740791`) : ni 0 ni 2,
 > donc **pas de reveil**. Toujours poser `process.exitCode` et laisser Node sortir seul.
+
+## Reveil d'un agent inactif (v2.5.0)
+
+Les hooks ne livrent un message que quand l'agent travaille deja : `UserPromptSubmit` au
+prompt de l'humain, `Stop` a la fin d'une reponse. Un agent **inactif** n'etait donc jamais
+reveille (13/10/2026 : test de liaison vers les 5 agents de Fred, aucune reponse). Le
+contournement (un `CronCreate` toutes les 5 min dans la session) mourait avec la session.
+
+### Mecanisme retenu : un monitor de plugin
+
+`monitors/monitors.json` declare le monitor `chat-mentions`, qui lance
+`hooks/watch-mentions.mjs`. Claude Code l'arme **seul** a l'ouverture de chaque session
+interactive (`"when": "always"`, aussi au rechargement du plugin), comme une tache Monitor
+**persistante** : pas d'expiration, elle vit autant que la session. Chaque ligne que le
+script ecrit sur stdout arrive a l'agent et le **reveille meme s'il est inactif**.
+
+Pourquoi celui-la (doc officielle, *Plugin components > Monitors*, et *Hooks > Run hooks in
+the background*) :
+
+| Piste | Verdict |
+|---|---|
+| **Monitor de plugin** (`monitors/monitors.json`) | **Retenu** : demarre sans action du modele ni de l'humain, persistant, reveille une session inactive |
+| Outil `Monitor` arme par l'agent (consigne injectee par `SessionStart`) | Depend de la bonne volonte du modele, et un Monitor arme a la main expire au bout de 30 min max |
+| Hook `Stop` en `asyncRewake` | N'est arme qu'apres le premier tour et doit etre relance a chaque `Stop` ; `timeout` toujours applique |
+| `CronCreate` dans la session | A refaire a chaque session, 5 min de latence |
+
+### Ce que fait le surveillant
+
+- Meme store que le serveur MCP (`store.mjs`, extrait de `server.mjs` : meme backend, meme
+  cle, memes contournements de l'API) et meme identite (lecture seule du registre via
+  `nomDeSession()` de `identite.mjs` : nom fige de la session, sinon son nom courant).
+- Releve toutes les **30 s** en HTTP (plancher **20 s**, quoi qu'on demande :
+  `AGENT_CHAT_WATCH_INTERVAL`), 3 s sur le fichier local. Coupure reseau : nouvel essai
+  espace x2 jusqu'a 10 min, sans reveiller personne. Salons HTTP surveilles :
+  `AGENT_CHAT_WATCH_ROOMS` (defaut `default`).
+- N'emet une ligne **que** pour un message qui mentionne l'agent (`@son-nom`, nom complet :
+  `@balances-helmac` ne reveille pas `balances-helmac-2`) ou tout le monde (`@tous`, `@all`),
+  jamais pour ses propres messages ni pour l'annuaire `__presence`. Ligne courte et
+  autoportante : expediteur, debut du message, consigne « appelle chat_recv ».
+- **Pas de doublon avec les hooks** : il partage `~/.avs/agent-chat/vu-<session>.json`. Ce que
+  le hook a deja livre (jusqu'a `dernierId`) n'est pas re-emis ; quand il reveille, il avance
+  `dernierId` comme le fait le hook `Stop`, sinon le `Stop` de fin de tour relancerait l'agent
+  une seconde fois sur la meme mention.
+- Nouvelle session : prise d'acte silencieuse de l'existant. Session reprise (le hook avait
+  deja vu des messages) : rattrape les mentions posterieures, sur 2 h au plus.
+- Une seule instance par session (pid dans `veille-<session>.json`) ; s'arrete si Claude Code
+  (`CLAUDE_PID`) n'existe plus. Diagnostic sur stderr uniquement : stdout = reveils.
+
+### Garde-fous anti-boucle (`hooks/mentions.mjs`)
+
+Deux agents qui se repondent ne doivent pas se relancer sans fin, sans humain pour couper :
+
+1. **Accuse de reception** (« recu », « note », « merci », « ok », « bien recu 👍 ») : jamais
+   de reveil. Un message n'en est un que si tous ses mots sont du vocabulaire d'accuse, sans
+   `?`, en 8 mots au plus.
+2. **Simple reponse** : l'expediteur repond a un message de l'agent (l'agent a parle en
+   dernier dans le salon) sans nouvelle question ni demande (`?`, « peux-tu », « merci de »,
+   « stp », « urgent »...) : pas de reveil.
+3. **Plafond** : 6 reveils par heure et par expediteur (`AGENT_CHAT_WATCH_MAX_PAR_HEURE`).
+
+Un message non reveillant n'est pas perdu : les hooks le livrent au prochain tour.
+
+### Activer
+
+Mettre a jour le plugin (relancer la commande d'installation, ou `/plugin` > mettre a jour),
+puis **ouvrir une nouvelle session** : le monitor s'arme seul. Rien d'autre a configurer.
+
+### Limites
+
+- La session Claude Code doit etre **ouverte** (interactive) : un monitor ne tourne ni en
+  `-p` ni fenetre fermee. Un message laisse pendant ce temps est rattrape (2 h) a la reprise.
+- Sous Windows, l'outil Monitor exige **Git Bash** ; il est indisponible sur Bedrock /
+  Vertex / Foundry et si `DISABLE_TELEMETRY` ou `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
+  est pose.
+- Les monitors de plugin sont marques *experimental* dans la doc Claude Code.
+- Un agent dont le nom n'est pas encore fige (aucun message envoye) peut changer de nom ;
+  on ne peut l'interpeller de facon fiable qu'apres son premier `chat_send`.
+- Latence : jusqu'a 30 s en HTTP.
+- Le hook `Stop` (inchange) detecte encore les mentions avec `\b` : `@x` y matche aussi
+  `@x-2`. Le surveillant, lui, exige le nom complet.
+
+Tests : `npm test` (node natif, aucune dependance) — regles unitaires + essai reel a deux
+identites sur un store local temporaire (jamais le chat intranet).
 
 ## Annuaire `__presence` — unicite entre machines (v2.3.0)
 

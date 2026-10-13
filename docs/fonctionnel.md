@@ -10,7 +10,7 @@ Les plugins AVS donnent à chaque agent Claude Code de l'équipe les mêmes capa
 | Plugin | Ce que l'utilisateur y gagne | Comment on s'en sert |
 |---|---|---|
 | **avs-mcp-kb** | L'agent consulte la base de connaissances avant d'agir et y note ce qu'il apprend | Automatique ; ou demander « cherche dans la KB… » (`kb_search`, `kb_log`) |
-| **avs-mcp-agent-chat** | Les agents de toute l'équipe peuvent s'écrire (coordination, questions) | « demande à l'agent de Tom… » (`chat_send`, `chat_recv`) ; les messages reçus s'affichent seuls |
+| **avs-mcp-agent-chat** | Les agents de toute l'équipe peuvent s'écrire (coordination, questions) | « demande à l'agent de Tom… » (`chat_send`, `chat_recv`) ; les messages reçus s'affichent seuls, et un agent inactif se réveille quand on le mentionne (`@son-nom`, `@tous`) |
 | **avs-logics-depannage** | Dépannage Logic'S V2/V3 guidé chez le client (caisse, Automate, HFSQL, périphériques, réseau, Cloud, clôture NF-525) | `/logics-depannage` ou décrire la panne |
 | **avs-locks** | Deux agents ne peuvent pas modifier le même sous-projet du repo `avs` en même temps ; le verrou tombe au `git push` | Automatique |
 | **avs-statusline** | Barre du bas : sujet AVS en cours, repo, branche, modèle | Automatique |
@@ -51,6 +51,7 @@ Chaque ligne est OK / ATTENTION / MANQUE, avec la correction à appliquer. Envoy
 | Seul le plugin de dépannage marche | Scripts d'avant le 17/09/2026 (plantaient sous PowerShell 5.1) | Relancer la commande d'installation |
 | Les outils KB / chat existent mais ne renvoient rien ou « clé introuvable » | Clé API seulement dans le profil PowerShell : invisible quand Claude Code est lancé depuis l'app de bureau ou VS Code | Relancer la commande : elle écrit la clé dans `~/.avs/api_key` |
 | Personne ne répond sur le chat | Chat en mode local (ancienne variable `AGENT_CHAT_BACKEND=file`) | `setx AGENT_CHAT_BACKEND http`, relancer Claude Code |
+| Un agent mentionné ne se réveille pas | Plugin antérieur à la v2.5.0, session ouverte avant la mise à jour, fenêtre fermée, ou Git Bash absent (Windows) | Relancer la commande d'installation puis ouvrir une nouvelle session ; le message est de toute façon livré au prochain tour. Un simple « reçu / merci / ok » ne réveille volontairement personne |
 | Barre d'état vide | Node absent, ou ancienne config passant par `bash` | Installer Node, relancer la commande |
 | Un plugin annoncé n'apparaît pas | Poste configuré avant sa sortie | Relancer la commande |
 
@@ -73,6 +74,7 @@ Chaque ligne est OK / ATTENTION / MANQUE, avec la correction à appliquer. Envoy
 | 14/09/2026 | Mail à Fred (Tom en copie) : son plugin de dépannage publié, procédure en 4 étapes — n'a pas fonctionné pour les autres plugins |
 | 17/09/2026 | Correctifs (PR #2) : commande unique compatible Windows 5.1, clé dans un fichier, chat partagé automatique. Règle agents ajoutée à l'onboarding |
 | 17/09/2026 | Mail à Fred (Tom en copie) « Agents Claude Code AVS : installation en une commande » |
+| 13/10/2026 | Chat v2.5.0 (demande #464) : un agent inactif est réveillé quand on le mentionne (monitor de plugin, garde-fous anti-boucle) |
 | À venir | Retour de Fred, puis envoi au reste de l'équipe (destinataires à décider avec Nicolas) |
 
 Piste non activée : la console admin Claude (Team/Enterprise, *Managed settings*) peut imposer le marketplace et les plugins à toute l'organisation ; la clé API resterait à poser par poste.
