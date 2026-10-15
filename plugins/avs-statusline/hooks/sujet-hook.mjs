@@ -16,7 +16,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { SUJETS_DIR, listeSujets, formaterParNumero, courtTitre, apiKey } from "./lib-sujets.mjs";
+import {
+  SUJETS_DIR,
+  listeSujets,
+  formaterParNumero,
+  courtTitre,
+  apiKey,
+  nettoyerPrompt,
+  numeroDansTexte,
+  parTitre,
+} from "./lib-sujets.mjs";
 
 const MODELE_FILET = "claude-haiku-4-5-20251001";
 const FILET_TIMEOUT_MS = 25_000;
@@ -80,53 +89,14 @@ async function lireStdin() {
 }
 
 // --- 1. Ce que tape l'humain -------------------------------------------------
-
-/** Reconnait "#133", "sujet 133", "on passe sur le 133". Pas un nombre nu : "il y a
- *  133 articles" ne doit pas changer de sujet. */
-function numeroDansTexte(texte) {
-  const m =
-    texte.match(/#(\d{1,4})\b/) ||
-    texte.match(/\bsujets?\s*(?:n[°o]\s*)?(\d{1,4})\b/i) ||
-    texte.match(/\bdossiers?\s*(?:n[°o]\s*)?(\d{1,4})\b/i);
-  return m ? m[1] : null;
-}
-
-/** Titre de sujet cite en toutes lettres ("on bosse sur Rhomeo"). Exige au moins deux
- *  mots significatifs communs pour eviter qu'un "site" ou "caisse" isole ne matche
- *  la moitie du portefeuille. */
-// Mots trop courants pour designer un sujet a eux seuls (exclus de parTitre).
-// 12/10/2026 : « la barre dans la fenetre Claude Code ne se met pas a jour » collait
-// « #181 Outillage agents Claude Code » a une session qui travaillait le Pad.
-const MOTS_GENERIQUES = new Set([
-  "claude", "code", "logic", "logics", "caisse", "caisses", "demande", "client", "clients",
-  "avec", "pour", "dans", "plus", "sans", "sont", "fait", "faire", "suivi", "global",
-  "projet", "produit", "application", "version", "mise", "jour", "commande", "contrat",
-]);
-
-function parTitre(texte, sujets) {
-  const mots = (s) =>
-    new Set(
-      s
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .split(/[^a-z0-9']+/)
-        .filter((m) => m.length >= 4 && !MOTS_GENERIQUES.has(m))
-    );
-  const dits = mots(texte);
-  if (dits.size === 0) return null;
-  let meilleur = null;
-  for (const s of sujets) {
-    const cibles = mots(s.title);
-    let score = 0;
-    for (const m of cibles) if (dits.has(m)) score++;
-    if (score >= 2 && (!meilleur || score > meilleur.score)) meilleur = { s, score };
-  }
-  return meilleur ? `#${meilleur.s.number} ${courtTitre(meilleur.s.title)}` : null;
-}
+// Detection : voir lib-sujets.mjs (nettoyerPrompt, numeroDansTexte, parTitre), testee
+// dans test/sujets.test.mjs.
 
 async function surPrompt(d) {
-  const texte = d.prompt || "";
+  // Uniquement ce que l'humain a ecrit : une notification du chat (« Monitor event ») ou
+  // une citation arrive aussi comme prompt, mais ce n'est pas lui qui parle.
+  const texte = nettoyerPrompt(d.prompt);
+  if (!texte) return false;
   const num = numeroDansTexte(texte);
   if (num) {
     const t = await formaterParNumero(num);
@@ -176,9 +146,11 @@ function derniersMessagesUtilisateur(transcriptPath, n = 8) {
       }
       if (e.type !== "user" || !e.message) continue;
       const c = e.message.content;
-      const texte = typeof c === "string" ? c : (c || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-      // Les retours d'outil arrivent aussi en role user : on les saute.
-      if (!texte || texte.startsWith("<") || texte.length < 8) continue;
+      const brut = typeof c === "string" ? c : (c || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      // Les retours d'outil et les notifications (chat, moniteurs) arrivent aussi en role
+      // user : on ne garde que ce que l'humain a ecrit.
+      const texte = nettoyerPrompt(brut);
+      if (!texte || texte.length < 8) continue;
       out.unshift(texte.slice(0, 500));
     }
     return out;

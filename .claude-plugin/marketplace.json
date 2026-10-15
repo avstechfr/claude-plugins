@@ -8,8 +8,8 @@
     {
       "name": "avs-statusline",
       "source": "./plugins/avs-statusline",
-      "description": "Status line Claude Code AVS : sujet AVS en cours (pose et REVISE automatiquement par hooks) + repo + dossier + agent (nom sur le chat) + branche Git + modele",
-      "version": "2.3.2",
+      "description": "Status line Claude Code AVS : sujet AVS en cours (pose et REVISE automatiquement par hooks) + repo + dossier + nom de la session sur le chat (🤖) + branche Git + modele",
+      "version": "2.4.0",
       "author": {
         "name": "AVS Technologies"
       }
@@ -17,8 +17,8 @@
     {
       "name": "avs-mcp-agent-chat",
       "source": "./plugins/avs-mcp-agent-chat",
-      "description": "MCP server agent-chat : discussion entre instances Claude Code (chat_send / chat_recv / chat_rooms / chat_agents / chat_whoami). Nom d agent unique par session, derive du sujet AVS en cours. Zero dependance npm. Backend HTTP intranet des qu une cle API est trouvee, local sinon. Reveil d un agent inactif quand on le mentionne (@nom, @tous).",
-      "version": "2.5.0",
+      "description": "MCP server agent-chat : discussion entre instances Claude Code (chat_send / chat_recv / chat_rename / chat_rooms / chat_agents / chat_whoami). Nom d agent unique et stable par session (fige au premier message, chat_rename pour le choisir), affiche dans la barre AVS. Zero dependance npm. Backend HTTP intranet des qu une cle API est trouvee, local sinon. Reveil d un agent inactif quand on le mentionne (@nom, @tous).",
+      "version": "2.6.0",
       "author": {
         "name": "AVS Technologies"
       }
