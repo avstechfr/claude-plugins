@@ -1,6 +1,6 @@
 # avs-statusline
 
-Status line Claude Code AVS : sujet AVS en cours, nom du repo, dossier courant, agent (`.claude/agent-name`), branche Git, modele actif.
+Status line Claude Code AVS : sujet AVS en cours, nom du repo, dossier courant, nom de la session sur le chat inter-agents, branche Git, modele actif.
 
 ## Rendu
 
@@ -14,12 +14,19 @@ Conventions :
 - **Sujet** : contenu de `~/.claude/sujets/session-<session_id>.txt`, ecrit par les hooks (voir [Sujet en cours](#sujet-en-cours))
 - **Repo** : basename de `git rev-parse --show-toplevel`
 - **Dossier courant** : chemin du cwd relatif a la racine du repo (`.` a la racine) ; hors repo git, basename du cwd
-- **Agent** : le nom sous lequel les autres agents te voient sur le chat (registre
-  `~/.avs/agent-chat/agents.json` tenu par `avs-mcp-agent-chat`, derive du sujet en cours).
-  Repli sur `.claude/agent-name` tant qu'aucun nom de chat n'est enregistre pour la session.
-  Depuis la v2.2.0 : avant, ce segment affichait toujours `.claude/agent-name`, versionne par
-  repo — toutes les fenetres d'un meme repo montraient le meme nom, et il y avait deux
-  notions concurrentes de "nom d'agent"
+- **Agent** (`🤖`) : le nom sous lequel les AUTRES agents voient cette session sur le chat
+  (`avs-mcp-agent-chat`) — c'est ce nom qu'il faut chercher dans `chat_agents` ou dans les
+  en-tetes « de <nom> » des messages. Depuis la v2.4.0 :
+  - `🤖 generation-378` : nom fige (premier message envoye) ou choisi (`chat_rename`), lu
+    dans `~/.avs/agent-chat/sessions/<session_id>.json`. Il ne change plus de la session ;
+  - `🤖 logics?` : nom **provisoire** (registre `~/.avs/agent-chat/agents.json`), aucun
+    message encore envoye, il peut encore bouger ;
+  - `🤖 ?` : aucun nom enregistre pour la session (serveur de chat pas encore demarre) ;
+  - pas de `🤖` : le chat n'a jamais tourne sur ce poste.
+  Plus de repli sur `.claude/agent-name` : versionne par repo, il donnait le meme nom a
+  toutes les fenetres et faisait chercher sur le chat un agent qui n'existait pas.
+  Pour donner un nom parlant a une session : demander a l'agent « appelle-toi X sur le
+  chat » (outil `chat_rename`), la barre suit tout de suite.
 - **Branche** : sortie de `git rev-parse --abbrev-ref HEAD`
 - **Modele** : champ `model.display_name` du JSON Claude Code
 
@@ -31,13 +38,35 @@ n'ecrase jamais un signal fort dans la meme session :
 
 | Evenement | Signal | Exemple |
 |---|---|---|
-| `UserPromptSubmit` | numero ou titre cite par l'humain | « on reprend le **#172** », « on avance sur **Rhomeo** » |
+| `UserPromptSubmit` | `#NNN` ou titre quasi complet tape par l'humain | « on reprend le **#172** », « point sur **Rhomeo Decoration** » |
 | `PostToolUse` | l'agent appelle l'API sujets | `POST /api/external/sujets/<id>/notes` |
 | `Stop` | filet : un Haiku choisit dans la liste des sujets ouverts | deduit de la conversation, au plus une fois par demi-heure |
 
 Le titre est resolu via `GET /api/external/sujets` (cle `AVS_API_KEY` ou `~/.avs/api_key`),
 mis en cache 12 h dans `~/.claude/sujets/.cache-sujets.json`, et tronque a ~42 caracteres.
 `SessionEnd` supprime le fichier de la session et purge ceux de plus de 7 jours.
+
+### Ce que tape l'humain, et rien d'autre (v2.4.0)
+
+Le hook `UserPromptSubmit` ne regarde que ce que l'humain a ecrit lui-meme
+(`nettoyerPrompt` dans `hooks/lib-sujets.mjs`) : les notifications injectees comme prompt
+(`<task-notification>` du surveillant de mentions du chat), les lignes `[agent-chat]` et les
+citations (`> ...`) sont retirees. Le 14/10/2026, une notification du chat contenant
+« #225 » (un message de Tom sur le logo) avait pose « #225 Nouveau logo » en source
+« humain » sur la session globale Logic'S — et lui avait donne son nom de chat.
+
+Puis seuls deux signaux comptent :
+- un **`#NNN` explicite** (plus « sujet 133 » ni un nombre nu) ;
+- un **titre quasi complet** : au moins 80 % des mots significatifs de la tete du titre
+  (avant « - », « : », sans parentheses), deux mots au minimum. Les mots de l'outil
+  lui-meme (« Claude », « Code », « agent », « barre », « fenetre », « session »,
+  « outillage »...) ne comptent pas : « je devrais le voir dans ma barre en bas, dans mon
+  Claude Code » ne pose plus « #181 Outillage agents Claude Code ».
+
+Le filet (`Stop`) applique le meme nettoyage aux messages qu'il lit. Ses deductions
+(source « filet ») ne servent jamais a nommer la session sur le chat.
+
+Tests : `node --test "test/*.test.mjs"` dans le dossier du plugin.
 
 ### Le sujet est REVISE, pas fige (v2.1.0)
 

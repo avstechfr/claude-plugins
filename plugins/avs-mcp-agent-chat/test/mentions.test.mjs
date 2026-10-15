@@ -8,6 +8,8 @@ import {
   estSimpleReponse,
   decider,
   ligneReveil,
+  avecEntete,
+  sansEntete,
 } from "../hooks/mentions.mjs";
 
 test("mentionne : nom exact, @tous, @all", () => {
@@ -82,4 +84,22 @@ test("ligne de reveil : une seule ligne, autoportante", () => {
   assert.ok(!l.includes("\n"));
   assert.ok(l.includes("b t'interpelle") && l.includes("chat_recv"));
   assert.ok(l.length < 400);
+});
+
+test("en-tete automatique : ne fausse ni les accuses ni les demandes", () => {
+  assert.equal(avecEntete("Recu, merci", "generation-378"), "de generation-378\nRecu, merci");
+  assert.ok(estAccuse(avecEntete("@a recu, merci !", "generation-378")));
+  assert.ok(!contientDemande(avecEntete("super, je deploie", "demande-urgente")));
+  assert.equal(sansEntete("de x\nbonjour"), "bonjour");
+  assert.equal(sansEntete("de rien, avec plaisir"), "de rien, avec plaisir");
+  // Pas de double en-tete si l'agent l'a deja ecrit.
+  assert.equal(avecEntete("de vieux-nom\nbonjour", "nouveau"), "de nouveau\nbonjour");
+  // Un tiret de liste en derniere ligne n'est pas une signature.
+  assert.equal(avecEntete("a faire :\n- de la doc", "x"), "de x\na faire :\n- de la doc");
+  assert.equal(avecEntete("a faire :\n- de rien", "x"), "de x\na faire :\n- de rien");
+});
+
+test("ligne de reveil : sans l'en-tete", () => {
+  const l = ligneReveil({ sender: "alice", room: "default", message: "de alice\n@bob tu peux ?" }, "bob");
+  assert.match(l, /« @bob tu peux \? »/);
 });
