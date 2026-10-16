@@ -11,9 +11,10 @@
 // d'or : stdout = uniquement les lignes de reveil. Tout le reste (diagnostic, erreurs
 // reseau) va sur stderr.
 //
-// Une ligne n'est emise QUE pour un message qui mentionne l'agent (`@son-nom`) ou tout le
-// monde (`@tous`), jamais pour ses propres messages, et apres les garde-fous anti-boucle
+// Une ligne n'est emise QUE pour un message qui mentionne l'agent PAR SON NOM
+// (`@son-nom`), jamais pour ses propres messages, et apres les garde-fous anti-boucle
 // de mentions.mjs (accuses de reception, simple reponse, plafond par expediteur).
+// Depuis la v2.7.0, `@tous` ne reveille plus : il est livre au prochain tour par le hook.
 //
 // Options (tests, lancement manuel) :
 //   --session <id>    session a surveiller (defaut : CLAUDE_CODE_SESSION_ID)
@@ -143,7 +144,7 @@ async function tour() {
       if (d.reveil) {
         noterReveil(veille.reveils, m.sender, maintenant);
         emis.push(m);
-      } else if (d.raison !== "pas-mentionne" && d.raison !== "le-mien") {
+      } else if (!["pas-mentionne", "le-mien", "tous-sans-reveil"].includes(d.raison)) {
         journal(`pas de reveil (${d.raison}) : ${m.sender} ${m.id}`);
       }
     });
