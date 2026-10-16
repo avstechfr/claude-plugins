@@ -86,7 +86,8 @@ test("le surveillant de bob emet une ligne sur mention, rien sinon", async () =>
   await alice.envoie("@bob-2 tu es la ?"); // un autre agent
   await bob.envoie("@bob note pour moi-meme"); // le sien, meme mentionne
   await pause(2500);
-  await alice.envoie("@tous point a 15 h, qui est dispo ?"); // -> REVEIL
+  await alice.envoie("@tous point a 15 h, qui est dispo ?"); // pas de reveil (v2.7.0)
+  await alice.envoie("@tous et @bob : tu prends le point de 15 h ?"); // -> REVEIL (nomme)
 
   await finVeille;
   alice.fin();
@@ -95,7 +96,7 @@ test("le surveillant de bob emet une ligne sur mention, rien sinon", async () =>
   const lignes = sortie.trim().split("\n").filter(Boolean);
   assert.equal(lignes.length, 2, `sortie :\n${sortie}\ndiag :\n${diag}`);
   assert.match(lignes[0], /alice t'interpelle .*tu es bob.*verifier le build/);
-  assert.match(lignes[1], /alice t'interpelle .*point a 15 h/);
+  assert.match(lignes[1], /alice t'interpelle .*tu prends le point de 15 h/);
   for (const l of lignes) assert.match(l, /chat_recv/);
 
   // Etat partage avec le hook : `dernierId` avance, le Stop ne relancera pas une 2e fois.

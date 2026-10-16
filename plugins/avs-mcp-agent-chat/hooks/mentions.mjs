@@ -1,4 +1,4 @@
-// Regles de reveil du surveillant de mentions (v2.5.0) : fonctions pures, testables
+// Regles de reveil du surveillant de mentions (v2.5.0, @tous sans reveil depuis v2.7.0) : fonctions pures, testables
 // sans reseau ni fichier (voir test/mentions.test.mjs).
 //
 // Le surveillant reveille un agent INACTIF. C'est puissant et dangereux : deux agents qui
@@ -14,19 +14,47 @@ function echapper(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Vrai si `texte` interpelle `nom` (`@nom`) ou tout le monde (`@tous`, `@all`).
+/** Vrai si `texte` interpelle `nom` PAR SON NOM (`@nom`). Seule cette mention reveille.
  *  Le nom doit etre complet : `@balances-helmac` ne doit PAS reveiller
- *  `balances-helmac-2` (et inversement) — `\b` ne suffit pas, le tiret est un separateur. */
+ *  `balances-helmac-2` (et inversement) — `` ne suffit pas, le tiret est un separateur. */
 export function mentionne(texte, nom) {
-  const t = String(texte || "");
-  const fin = "(?![a-z0-9_-])";
-  if (new RegExp(`(^|[^a-z0-9_-])@(tous|all)${fin}`, "i").test(t)) return true;
   if (!nom) return false;
-  return new RegExp(`(^|[^a-z0-9_-])@${echapper(nom)}${fin}`, "i").test(t);
+  return new RegExp(`(^|[^a-z0-9_-])@${echapper(nom)}(?![a-z0-9_-])`, "i").test(String(texte || ""));
+}
+
+/** Vrai si `texte` s'adresse a tout le monde (`@tous`, `@all`).
+ *  v2.7.0 : un `@tous` NE REVEILLE PLUS personne. Il reste livre par le hook
+ *  UserPromptSubmit au prochain tour de chaque agent. Avant, chaque `@tous` faisait parler
+ *  toutes les fenetres ouvertes de l'equipe en meme temps, la plupart pour ecrire a leur
+ *  humain « ce message ne me concerne pas » (retour de Nicolas, 16/10/2026). */
+export function mentionneTous(texte) {
+  return /(^|[^a-z0-9_-])@(tous|all)(?![a-z0-9_-])/i.test(String(texte || ""));
+}
+
+/** Ligne d'en-tete posee par chat_send (v2.6.0) : « de <nom> ». Elle dit qui parle dans
+ *  le corps meme du message, a la place des signatures manuelles (« — de formules-pad »)
+ *  qui ne correspondaient pas au nom reel de l'expediteur. */
+const ENTETE = /^de [a-z0-9][a-z0-9_-]*[ \t]*\r?\n/i;
+// Signatures manuelles qu'on retire a l'envoi : « @x - de `nom`. » en tete, « — de nom »
+// en derniere ligne. Volontairement etroit : un tiret de liste ordinaire n'est pas visé.
+const SIGNATURE_TETE = /^((?:@[a-z0-9_-]+[\s,]*)+)[—–-]\s*de\s+(?:l'agent\s+)?`[a-z0-9_-]+`\s*[.:]?\s*/i;
+const SIGNATURE_FIN = /\n[ \t]*(?:[—–]|--)[ \t]*de[ \t]+[`*_]*[a-z0-9_-]+[`*_]*[ \t]*\.?[ \t]*$/i;
+
+export function sansEntete(texte) {
+  return String(texte || "").replace(ENTETE, "");
+}
+
+/** Corps tel qu'il part sur le chat : en-tete « de <nom> » + message sans signature. */
+export function avecEntete(texte, nom) {
+  const corps = sansEntete(String(texte || "").trim())
+    .replace(SIGNATURE_TETE, "$1")
+    .replace(SIGNATURE_FIN, "")
+    .trim();
+  return `de ${nom}\n${corps}`;
 }
 
 function normaliser(texte) {
-  return String(texte || "")
+  return sansEntete(texte)
     .toLowerCase()
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -96,7 +124,9 @@ export function decider(m, { nom, historique = [], journal = {}, maintenant = Da
   if (!m || !m.sender) return { reveil: false, raison: "sans-expediteur" };
   if (m.sender === nom) return { reveil: false, raison: "le-mien" };
   if ((m.room || "") === "__presence") return { reveil: false, raison: "presence" };
-  if (!mentionne(m.message, nom)) return { reveil: false, raison: "pas-mentionne" };
+  if (!mentionne(m.message, nom)) {
+    return { reveil: false, raison: mentionneTous(m.message) ? "tous-sans-reveil" : "pas-mentionne" };
+  }
   if (estAccuse(m.message)) return { reveil: false, raison: "accuse" };
   if (estSimpleReponse(m, historique, nom)) return { reveil: false, raison: "simple-reponse" };
   if (!sousPlafond(journal, m.sender, maintenant, maxParHeure)) return { reveil: false, raison: "plafond" };
@@ -105,11 +135,11 @@ export function decider(m, { nom, historique = [], journal = {}, maintenant = Da
 
 /** La ligne emise (une seule, autoportante : c'est elle qui reveille l'agent). */
 export function ligneReveil(m, nom, maxCars = 160) {
-  const texte = String(m.message || "").replace(/\s+/g, " ").trim();
+  const texte = sansEntete(m.message).replace(/\s+/g, " ").trim();
   const debut = texte.length > maxCars ? texte.slice(0, maxCars) + "…" : texte;
   return (
     `[agent-chat] ${m.sender} t'interpelle (tu es ${nom}, salon ${m.room || "default"}) : ` +
-    `« ${debut} » -> appelle chat_recv pour lire le message entier, traite-le s'il te ` +
-    `concerne et reponds avec chat_send (pas d'accuse de reception seul).`
+    `« ${debut} » -> chat_recv pour tout lire, puis reponds avec chat_send. ` +
+    `Hors de ta tache : n'ecris RIEN a ton humain.`
   );
 }

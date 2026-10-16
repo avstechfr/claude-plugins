@@ -12,7 +12,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resoudreNom } from "../identite.mjs";
+// nomDeSession (lecture seule), jamais resoudreNom : un hook est un process ephemere, et
+// resoudreNom inscrivait son pid au registre — entree aussitot morte, nom recalcule au
+// tour suivant (une des causes des changements de nom du 14/10/2026). Relu a chaque
+// passage : le rappel « tu es X » suit un chat_rename.
+import { nomDeSession } from "../identite.mjs";
+import { sansEntete } from "./mentions.mjs";
 
 const DOSSIER = path.join(os.homedir(), ".avs", "agent-chat");
 const FICHIER_LOCAL = process.env.AGENT_CHAT_FILE || path.join(DOSSIER, "messages.jsonl");
@@ -108,21 +113,26 @@ if ((d.hook_event_name || "") === "Stop") {
   if (d.stop_hook_active) return; // relance imbriquee : on s'arrete la
   try {
     const etat = lireVu(sid);
-    const { nom } = resoudreNom({});
+    const { nom } = nomDeSession(sid);
     const messages = await messagesDepuis(etat.dernierId);
     const pourMoi = messages.filter(
-      (m) => m.sender && m.sender !== nom && new RegExp(`@${nom}\\b`, "i").test(String(m.message)),
+      (m) =>
+        m.sender &&
+        m.sender !== nom &&
+        // Nom exact uniquement (pas @tous : sans les garde-fous du surveillant, ce serait
+        // une relance en chaine) ; `@x` ne reveille pas `x-2`.
+        new RegExp(`(^|[^a-z0-9_-])@${nom}(?![a-z0-9_-])`, "i").test(sansEntete(m.message)),
     );
     if (pourMoi.length) {
       ecrireVu(sid, { ...etat, dernierId: messages[messages.length - 1].id, ts: Date.now() });
       const resume = pourMoi
         .slice(-2)
-        .map((m) => `${m.sender} : ${String(m.message).replace(/\s+/g, " ").slice(0, MAX_CARS)}`)
+        .map((m) => `${m.sender} : ${sansEntete(m.message).replace(/\s+/g, " ").slice(0, MAX_CARS)}`)
         .join("\n");
       process.stderr.write(
         `Tu viens d'etre interpelle sur le chat inter-agents (tu es \`${nom}\`) :\n${resume}\n` +
           "Traite la demande si elle te concerne, puis reponds avec chat_send. " +
-          "Si elle ne te concerne pas, dis-le en une ligne et arrete-toi.\n",
+          "Si elle ne te concerne pas, n'ecris RIEN a ton humain et arrete-toi.\n",
       );
       process.exitCode = 2; // 2 = relance le tour avec ce texte
       return;
@@ -141,11 +151,11 @@ if ((d.hook_event_name || "") === "Stop") {
       ecrireVu(sid, { dernierId: messages[messages.length - 1].id, ts: Date.now() });
     }
     if (!premierPassage && messages.length) {
-      const { nom } = resoudreNom({});
+      const { nom } = nomDeSession(sid);
       const autres = messages.filter((m) => m.sender && m.sender !== nom).slice(-MAX_INJECTES);
       if (autres.length) {
         const lignes = autres.map((m) => {
-          const texte = String(m.message).replace(/\s+/g, " ").trim();
+          const texte = sansEntete(m.message).replace(/\s+/g, " ").trim();
           const coupe = texte.length > MAX_CARS ? texte.slice(0, MAX_CARS) + "… (tronque)" : texte;
           return `- [${m.room || "default"}] ${m.sender} : ${coupe}`;
         });
@@ -156,7 +166,8 @@ if ((d.hook_event_name || "") === "Stop") {
               additionalContext: [
                 `Messages recus sur le chat inter-agents depuis ton dernier tour (tu es \`${nom}\`) :`,
                 ...lignes,
-                "Reponds-y avec chat_send si c'est attendu de toi ; sinon ignore.",
+                "Reponds-y avec chat_send si c'est attendu de toi. Sinon ignore-les SANS en parler " +
+                  "a ton humain (pas de « ce message ne me concerne pas »).",
               ].join("\n"),
             },
           }),
