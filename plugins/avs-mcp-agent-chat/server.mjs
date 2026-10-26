@@ -9,14 +9,14 @@
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
-import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { resoudreNom, agentsLocaux, sujetCourant, sessionId } from "./identite.mjs";
+import { resoudreNom, renommer, agentsLocaux, sujetCourant, sessionId } from "./identite.mjs";
 import { BACKEND, HTTP_URL, FILE_PATH, creerStore } from "./store.mjs";
+import { avecEntete } from "./hooks/mentions.mjs";
 
 const DEFAULT_ROOM = "default";
 // Salon technique ou chaque agent declare son nom : sert d'annuaire entre machines.
 const PRESENCE_ROOM = "__presence";
+const FENETRE_MS = 6 * 60 * 60 * 1000;
 
 const VERSION = (() => {
   try {
@@ -30,100 +30,92 @@ const VERSION = (() => {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
-function slugify(s) {
-  return String(s)
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 32) || "agent";
+// Identite : voir identite.mjs. Un nom par SESSION, fige au premier envoi (ou choisi
+// par chat_rename) et ecrit dans sessions/<sid>.json : il ne change plus ensuite.
+// `.claude/agent-name` n'est plus l'identite et la statusline ne l'affiche plus.
+
+// Backend et stores : voir store.mjs (partage avec le surveillant de mentions).
+const store = creerStore({ rooms: [DEFAULT_ROOM, PRESENCE_ROOM] });
+
+// Presence : « presence <machine> — <sujet> » (+ « (anciennement <nom>) » apres un
+// chat_rename). Le tiret long est le separateur historique, garde pour relire les
+// messages deja publies.
+function textePresence(ancien) {
+  const base = `presence ${hostname()} — ${sujetCourant()?.brut || "sans sujet"}`;
+  return ancien ? `${base} (anciennement ${ancien})` : base;
 }
 
-function detectRepoTop() {
-  try {
-    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 1500,
-    }).trim();
-    return top || null;
-  } catch {
-    return null;
-  }
+function lirePresence(message) {
+  const m = String(message || "").match(/^presence\s+(\S+)\s+[—-]\s+(.*?)(?:\s+\(anciennement\s+([a-z0-9_-]+)\))?\s*$/i);
+  if (!m) return null;
+  return { machine: m[1], sujet: m[2] === "sans sujet" ? null : m[2], ancien: m[3] || null };
 }
 
-function detectRepoName() {
-  const top = detectRepoTop();
-  if (top) return path.basename(top);
-  return path.basename(process.cwd()) || "agent";
-}
-
-// Lit un nom d'agent stable, scope par repo, via <repo>/.claude/agent-name.
-// Versionnable : un repo qui contient ce fichier est auto-nomme partout ou il est cloned.
-function detectAgentNameFromFile() {
-  const top = detectRepoTop();
-  if (!top) return null;
-  const filePath = path.join(top, ".claude", "agent-name");
-  try {
-    const content = readFileSync(filePath, "utf8").trim();
-    return content || null;
-  } catch {
-    return null;
-  }
-}
-
-// Identite : voir identite.mjs. Un nom par SESSION, derive du sujet en cours, rendu
-// unique parmi les agents vivants. `.claude/agent-name` n'est plus l'identite (il est
-// versionne par repo : toutes les fenetres ouvertes sur `avs` s'appelaient `central`),
-// il ne sert plus qu'a l'affichage de la statusline.
-const AGENT_NAME_FROM_FILE = detectAgentNameFromFile();
-
-/** Noms actifs vus sur le chat dans les dernieres heures (autres machines comprises).
- *  Best-effort : si le backend ne repond pas, on se rabat sur le registre local. */
-async function nomsDistantsRecents() {
+/** Annuaire du chat : pour chaque nom vu ces 6 dernieres heures (autres machines
+ *  comprises), sa machine et son sujet tels qu'il les a declares dans `__presence`,
+ *  et quand il a parle pour la derniere fois. Best-effort : si le backend ne repond
+ *  pas, annuaire vide (on se rabat sur le registre local). */
+async function annuaireDistant() {
   // L'API est scopee par salon (sans `room`, elle ne renvoie que `default`) : il faut
-  // donc interroger explicitement l'annuaire `__presence`, ou chaque agent declare son
-  // nom en se figeant. C'est lui qui donne l'unicite entre machines, un agent silencieux
-  // depuis 6 h n'apparaissant pas dans `default`.
-  const noms = new Set();
-  const limite = Date.now() - 6 * 60 * 60 * 1000;
-  for (const room of [DEFAULT_ROOM, PRESENCE_ROOM]) {
+  // donc interroger explicitement l'annuaire `__presence`. C'est lui qui donne l'unicite
+  // entre machines, un agent silencieux depuis 6 h n'apparaissant pas dans `default`.
+  const annuaire = new Map();
+  const limite = Date.now() - FENETRE_MS;
+  for (const room of [PRESENCE_ROOM, DEFAULT_ROOM]) {
+    let messages = [];
     try {
-      const messages = await store.fetchSince({ room, limit: 200 });
-      for (const m of messages) {
-        if (!m.sender) continue;
-        if (m.ts && new Date(m.ts).getTime() <= limite) continue;
-        noms.add(m.sender);
+      messages = await store.fetchSince({ room, limit: 200 });
+    } catch {
+      continue;
+    }
+    for (const m of messages) {
+      if (!m.sender) continue;
+      const ts = m.ts ? new Date(m.ts).getTime() : 0;
+      if (ts && ts <= limite) continue;
+      const a = annuaire.get(m.sender) || { nom: m.sender, machine: null, sujet: null, anciens: [], ts: 0 };
+      if (room === PRESENCE_ROOM) {
+        const p = lirePresence(m.message);
+        if (p) {
+          a.machine = p.machine;
+          a.sujet = p.sujet;
+          if (p.ancien && !a.anciens.includes(p.ancien)) a.anciens.push(p.ancien);
+        }
       }
-    } catch {}
+      a.ts = Math.max(a.ts, ts);
+      annuaire.set(m.sender, a);
+    }
   }
-  return [...noms];
+  return annuaire;
+}
+
+async function nomsDistantsRecents() {
+  return [...(await annuaireDistant()).keys()];
 }
 
 /** Nom courant. Tant qu'aucun message n'est parti, il se recalcule (le sujet n'est
  *  parfois connu que quelques secondes apres l'ouverture de la fenetre) ; le premier
- *  envoi le fige pour que l'adressage reste stable. */
+ *  envoi le fige, et il ne bouge plus (sauf chat_rename). */
 async function nomCourant({ figer = false } = {}) {
   const occupesDistants = await nomsDistantsRecents();
   return resoudreNom({ occupesDistants, figer });
 }
 
-// Backend et stores : voir store.mjs (partage avec le surveillant de mentions).
-const store = creerStore({ rooms: [DEFAULT_ROOM, PRESENCE_ROOM] });
+const CONSEIL_NOM =
+  "Ton nom vient du dossier/repo, il ne dit pas sur quoi tu travailles et personne ne " +
+  "pourra relier ce nom a ta fenetre. Choisis un nom parlant avec chat_rename " +
+  "(ex: generation-378, glory-elci), sans attendre qu'on te le demande.";
 
 const TOOLS = [
   {
     name: "chat_send",
     description:
-      "Envoie un message a l'autre agent Claude Code (autre fenetre, autre machine). Utilise-le quand tu dois coordonner avec une autre instance qui travaille en parallele. L'autre agent verra ton message en appelant chat_recv.",
+      "Envoie un message a l'autre agent Claude Code (autre fenetre, autre machine). Utilise-le quand tu dois coordonner avec une autre instance qui travaille en parallele. L'autre agent verra ton message en appelant chat_recv. Ne signe PAS tes messages (pas de « — de X ») : une ligne « de <ton nom> » est ajoutee automatiquement en tete, et c'est ce nom-la qu'on utilise pour te repondre (@ton-nom). Le premier envoi fige ton nom pour toute la session.",
     inputSchema: {
       type: "object",
       properties: {
         message: {
           type: "string",
-          description: "Le contenu textuel du message (markdown OK).",
+          description: "Le contenu textuel du message (markdown OK), sans signature.",
         },
         room: {
           type: "string",
@@ -131,6 +123,21 @@ const TOOLS = [
         },
       },
       required: ["message"],
+    },
+  },
+  {
+    name: "chat_rename",
+    description:
+      "Change ton nom sur le chat pour un nom parlant (ce sur quoi tu travailles : generation-378, glory-elci...). A utiliser quand ton nom actuel ne dit rien (nom de repo comme « logics ») ou est faux, ou quand l'humain te demande de t'appeler autrement. Le nom est fige pour le reste de la session, affiche dans sa barre en bas de Claude Code, et le changement est annonce sur le chat (« X s'appelle desormais Y »). Refuse si le nom est deja pris.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nom: {
+          type: "string",
+          description: "Nouveau nom : court, en minuscules, mots separes par des tirets (3 a 32 caracteres).",
+        },
+      },
+      required: ["nom"],
     },
   },
   {
@@ -165,16 +172,18 @@ const TOOLS = [
   {
     name: "chat_whoami",
     description:
-      "Retourne l'identite de cet agent telle que vue par les autres (sender), le sujet AVS en cours et si le nom est fige. Le nom est derive du sujet et rendu unique ; il peut encore changer tant qu'aucun message n'a ete envoye.",
+      "Retourne l'identite de cet agent telle que vue par les autres (sender), le sujet AVS en cours et si le nom est fige. Tant qu'aucun message n'est parti le nom est provisoire ; ensuite il ne change plus, sauf par chat_rename.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "chat_agents",
     description:
-      "Liste les agents joignables : les fenetres ouvertes sur cette machine (avec le sujet de chacune) et les noms vus parler sur le chat ces 6 dernieres heures. A appeler AVANT d'ecrire a quelqu'un, pour connaitre son nom exact.",
+      "Liste les agents joignables, un par nom, avec sa MACHINE et son SUJET : les fenetres ouvertes sur ce poste et les agents vus sur le chat ces 6 dernieres heures (autres machines comprises). A appeler AVANT d'ecrire a quelqu'un pour connaitre son nom exact, et pour dire a l'humain quelle fenetre est quel agent.",
     inputSchema: { type: "object", properties: {} },
   },
 ];
+
+const texte = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj, null, 2) }] });
 
 async function handleTool(name, args = {}) {
   try {
@@ -183,140 +192,154 @@ async function handleTool(name, args = {}) {
       if (!message) throw new Error("`message` est requis et non vide");
       const room = String(args.room || DEFAULT_ROOM);
       const avant = await nomCourant();
-      const { nom } = await nomCourant({ figer: true });
+      const { nom, source, choisi } = await nomCourant({ figer: true });
       // Presence : au moment ou le nom se fige, on le declare dans un salon dedie. C'est
       // ce qui donne l'unicite ENTRE MACHINES — le registre local ne voit que les
       // fenetres du poste, et un agent silencieux depuis 6 h n'apparaissait nulle part.
       // Salon separe pour que `chat_recv` (qui lit `default`) n'en soit pas pollue.
       if (!avant.fige) {
         try {
-          await store.append({
-            sender: nom,
-            room: PRESENCE_ROOM,
-            message: `presence ${hostname()} — ${sujetCourant()?.brut || "sans sujet"}`,
-          });
+          await store.append({ sender: nom, room: PRESENCE_ROOM, message: textePresence() });
         } catch {}
       }
-      const stored = await store.append({ sender: nom, room, message });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                ok: true,
-                id: stored.id,
-                ts: stored.ts,
-                sender: stored.sender,
-                room: stored.room,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const stored = await store.append({ sender: nom, room, message: avecEntete(message, nom) });
+      const rep = { ok: true, id: stored.id, ts: stored.ts, sender: stored.sender, room: stored.room };
+      if (!choisi && (source === "repo" || source === "cwd")) rep.conseil = CONSEIL_NOM;
+      return texte(rep);
+    }
+
+    if (name === "chat_rename") {
+      const distants = await nomsDistantsRecents();
+      const { ancien, nom, inchange } = renommer(String(args.nom || ""), { occupesDistants: distants });
+      if (!inchange) {
+        try {
+          await store.append({ sender: nom, room: PRESENCE_ROOM, message: textePresence(ancien) });
+        } catch {}
+        if (ancien && ancien !== nom) {
+          const sujet = sujetCourant()?.brut;
+          try {
+            await store.append({
+              sender: nom,
+              room: DEFAULT_ROOM,
+              message: avecEntete(
+                `${ancien} s'appelle desormais ${nom} (machine ${hostname()}` +
+                  (sujet ? `, sujet ${sujet}` : "") +
+                  `). Ecrivez-moi a @${nom}.`,
+                nom,
+              ),
+            });
+          } catch {}
+        }
+      }
+      return texte({ ok: true, sender: nom, ancien, inchange: !!inchange, fige: true });
     }
 
     if (name === "chat_recv") {
       const room = args.room ? String(args.room) : DEFAULT_ROOM;
       const since = args.since ? String(args.since) : undefined;
-      const limit = Math.min(
-        Math.max(Number(args.limit) || DEFAULT_LIMIT, 1),
-        MAX_LIMIT,
-      );
+      const limit = Math.min(Math.max(Number(args.limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
       const messages = await store.fetchSince({ room, since, limit });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                room,
-                count: messages.length,
-                lastId: messages.length ? messages[messages.length - 1].id : since || null,
-                messages,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      return texte({
+        room,
+        count: messages.length,
+        lastId: messages.length ? messages[messages.length - 1].id : since || null,
+        messages,
+      });
     }
 
     if (name === "chat_rooms") {
-      const rooms = await store.listRooms();
-      return {
-        content: [{ type: "text", text: JSON.stringify({ rooms }, null, 2) }],
-      };
+      return texte({ rooms: await store.listRooms() });
     }
 
     if (name === "chat_whoami") {
-      const { nom, source, fige } = await nomCourant();
+      const { nom, source, fige, choisi } = await nomCourant();
       const sujet = sujetCourant();
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                sender: nom,
-                senderSource: source,
-                // Tant que c'est false, le nom peut encore bouger si le sujet se precise.
-                fige,
-                sujet: sujet?.brut || null,
-                session: sessionId(),
-                backend: BACKEND,
-                file: BACKEND === "file" ? FILE_PATH : null,
-                http: BACKEND === "http" ? HTTP_URL : null,
-                pid: process.pid,
-                hostname: hostname(),
-              },
-              null,
-              2,
-            ),
-          },
-        ],
+      const rep = {
+        sender: nom,
+        senderSource: source,
+        // Tant que c'est false, le nom peut encore bouger si le sujet se precise.
+        fige,
+        choisi,
+        sujet: sujet?.brut || null,
+        session: sessionId(),
+        backend: BACKEND,
+        file: BACKEND === "file" ? FILE_PATH : null,
+        http: BACKEND === "http" ? HTTP_URL : null,
+        pid: process.pid,
+        hostname: hostname(),
       };
+      if (!choisi && (source === "repo" || source === "cwd")) rep.conseil = CONSEIL_NOM;
+      return texte(rep);
     }
 
     if (name === "chat_agents") {
-      const distants = await nomsDistantsRecents();
-      const locaux = agentsLocaux();
-      const connusEnLocal = new Set(locaux.map((a) => a.nom));
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                // Fenetres ouvertes sur cette machine (registre local, avec leur sujet).
-                locaux,
-                // Noms vus parler sur le chat ces 6 dernieres heures, autres machines
-                // comprises. Un agent silencieux depuis 6 h n'y figure pas.
-                distants: distants.filter((n) => !connusEnLocal.has(n)),
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const annuaire = await annuaireDistant();
+      const moi = (await nomCourant()).nom;
+      const lignes = new Map();
+      for (const a of annuaire.values()) {
+        lignes.set(a.nom, {
+          nom: a.nom,
+          machine: a.machine,
+          sujet: a.sujet,
+          ici: a.machine === hostname(),
+          vuIlYaMin: a.ts ? Math.round((Date.now() - a.ts) / 60000) : null,
+          ...(a.anciens.length ? { anciensNoms: a.anciens } : {}),
+        });
+      }
+      // Le registre local est plus frais que l'annuaire (sujet du moment, fenetre
+      // ouverte meme silencieuse) : il complete et corrige.
+      for (const l of agentsLocaux()) {
+        const deja = lignes.get(l.nom) || {};
+        lignes.set(l.nom, {
+          ...deja,
+          nom: l.nom,
+          machine: l.host,
+          sujet: l.sujet || deja.sujet || null,
+          ici: l.host === hostname(),
+          vuIlYaMin: Math.min(l.vuIlYaMin, deja.vuIlYaMin ?? Infinity),
+          ...(l.fige ? {} : { provisoire: true }),
+        });
+      }
+      const agents = [...lignes.values()]
+        .map((a) => (a.nom === moi ? { ...a, moi: true } : a))
+        .sort((a, b) => (a.vuIlYaMin ?? 1e9) - (b.vuIlYaMin ?? 1e9));
+      return texte({
+        moi,
+        machine: hostname(),
+        // Un agent silencieux depuis 6 h sur une autre machine n'y figure pas.
+        agents,
+      });
     }
 
     throw new Error(`Outil inconnu : ${name}`);
   } catch (err) {
     return {
       isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Erreur ${name}: ${err.message || String(err)}`,
-        },
-      ],
+      content: [{ type: "text", text: `Erreur ${name}: ${err.message || String(err)}` }],
     };
   }
+}
+
+// --- Presence au registre local ----------------------------------------------------
+// La statusline lit le registre pour afficher 🤖 <nom>. Avant, seul un appel d'outil
+// y inscrivait la session : la barre montrait un nom faux (repli `.claude/agent-name`)
+// jusqu'au premier chat_*. On s'inscrit des le demarrage, puis on rafraichit
+// regulierement (sinon l'entree d'une fenetre inactive perime au bout de 6 h). Les
+// noms distants ne sont relus que toutes les 30 min : l'API est partagee.
+let distantsCache = [];
+let distantsTs = 0;
+async function battement() {
+  try {
+    if (Date.now() - distantsTs > 30 * 60 * 1000) {
+      distantsCache = await nomsDistantsRecents();
+      distantsTs = Date.now();
+    }
+    resoudreNom({ occupesDistants: distantsCache });
+  } catch {}
+}
+if (sessionId()) {
+  setTimeout(battement, 2000).unref();
+  setInterval(battement, 5 * 60 * 1000).unref();
 }
 
 // --- Serveur : JSON-RPC 2.0 sur stdio, un message JSON par ligne ---

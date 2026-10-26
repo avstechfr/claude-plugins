@@ -16,7 +16,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { SUJETS_DIR, listeSujets, formaterParNumero, courtTitre, apiKey } from "./lib-sujets.mjs";
+import {
+  SUJETS_DIR,
+  listeSujets,
+  formaterParNumero,
+  courtTitre,
+  apiKey,
+  nettoyerPrompt,
+  numeroDansTexte,
+  parTitre,
+} from "./lib-sujets.mjs";
 
 const MODELE_FILET = "claude-haiku-4-5-20251001";
 const FILET_TIMEOUT_MS = 25_000;
@@ -80,44 +89,14 @@ async function lireStdin() {
 }
 
 // --- 1. Ce que tape l'humain -------------------------------------------------
-
-/** Reconnait "#133", "sujet 133", "on passe sur le 133". Pas un nombre nu : "il y a
- *  133 articles" ne doit pas changer de sujet. */
-function numeroDansTexte(texte) {
-  const m =
-    texte.match(/#(\d{1,4})\b/) ||
-    texte.match(/\bsujets?\s*(?:n[°o]\s*)?(\d{1,4})\b/i) ||
-    texte.match(/\bdossiers?\s*(?:n[°o]\s*)?(\d{1,4})\b/i);
-  return m ? m[1] : null;
-}
-
-/** Titre de sujet cite en toutes lettres ("on bosse sur Rhomeo"). Exige au moins deux
- *  mots significatifs communs pour eviter qu'un "site" ou "caisse" isole ne matche
- *  la moitie du portefeuille. */
-function parTitre(texte, sujets) {
-  const mots = (s) =>
-    new Set(
-      s
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .split(/[^a-z0-9']+/)
-        .filter((m) => m.length >= 4)
-    );
-  const dits = mots(texte);
-  if (dits.size === 0) return null;
-  let meilleur = null;
-  for (const s of sujets) {
-    const cibles = mots(s.title);
-    let score = 0;
-    for (const m of cibles) if (dits.has(m)) score++;
-    if (score >= 2 && (!meilleur || score > meilleur.score)) meilleur = { s, score };
-  }
-  return meilleur ? `#${meilleur.s.number} ${courtTitre(meilleur.s.title)}` : null;
-}
+// Detection : voir lib-sujets.mjs (nettoyerPrompt, numeroDansTexte, parTitre), testee
+// dans test/sujets.test.mjs.
 
 async function surPrompt(d) {
-  const texte = d.prompt || "";
+  // Uniquement ce que l'humain a ecrit : une notification du chat (« Monitor event ») ou
+  // une citation arrive aussi comme prompt, mais ce n'est pas lui qui parle.
+  const texte = nettoyerPrompt(d.prompt);
+  if (!texte) return false;
   const num = numeroDansTexte(texte);
   if (num) {
     const t = await formaterParNumero(num);
@@ -167,10 +146,39 @@ function derniersMessagesUtilisateur(transcriptPath, n = 8) {
       }
       if (e.type !== "user" || !e.message) continue;
       const c = e.message.content;
-      const texte = typeof c === "string" ? c : (c || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
-      // Les retours d'outil arrivent aussi en role user : on les saute.
-      if (!texte || texte.startsWith("<") || texte.length < 8) continue;
+      const brut = typeof c === "string" ? c : (c || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      // Les retours d'outil et les notifications (chat, moniteurs) arrivent aussi en role
+      // user : on ne garde que ce que l'humain a ecrit.
+      const texte = nettoyerPrompt(brut);
+      if (!texte || texte.length < 8) continue;
       out.unshift(texte.slice(0, 500));
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Debut des derniers messages de l'AGENT. Quand l'humain dicte peu (« on enchaine »)
+ *  ou deforme les noms (« logique SPAD » pour Logic'S Pad), seul ce que fait l'agent
+ *  dit sur quoi on travaille : sans ca le filet repondait none et la barre restait vide
+ *  toute la session (constat 12/10/2026). Tronque : ces messages sont longs. */
+function derniersMessagesAgent(transcriptPath, n = 4) {
+  try {
+    const lignes = fs.readFileSync(transcriptPath, "utf8").trim().split("\n");
+    const out = [];
+    for (let i = lignes.length - 1; i >= 0 && out.length < n; i--) {
+      let e;
+      try {
+        e = JSON.parse(lignes[i]);
+      } catch {
+        continue;
+      }
+      if (e.type !== "assistant" || !e.message) continue;
+      const c = e.message.content;
+      const texte = typeof c === "string" ? c : (c || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      if (!texte || texte.length < 20) continue;
+      out.unshift(texte.replace(/\s+/g, " ").slice(0, 300));
     }
     return out;
   } catch {
@@ -234,7 +242,8 @@ async function surStop(d) {
   if (!apiKey()) return false;
 
   const messages = derniersMessagesUtilisateur(d.transcript_path);
-  if (messages.length === 0) return false;
+  const agent = derniersMessagesAgent(d.transcript_path);
+  if (messages.length === 0 && agent.length === 0) return false;
   const sujets = await listeSujets();
   if (sujets.length === 0) return false;
 
@@ -243,11 +252,17 @@ async function surStop(d) {
     "Voici la liste des sujets ouverts d'une entreprise, au format numero|titre :",
     catalogue,
     "",
-    "Voici les derniers messages d'un utilisateur a son assistant de developpement :",
+    "Voici les derniers messages d'un utilisateur a son assistant de developpement",
+    "(dictes a la voix : les noms propres peuvent etre deformes) :",
     messages.map((m) => "- " + m).join("\n"),
     "",
-    "Sur quel sujet de la liste porte le travail EN COURS ? Les derniers messages priment :",
+    "Et le debut des dernieres reponses de l'assistant (ce qu'il fait reellement) :",
+    agent.map((m) => "- " + m).join("\n"),
+    "",
+    "Sur quel sujet de la liste porte le travail EN COURS ? Les derniers echanges priment :",
     "si la conversation a change de sujet en route, reponds sur le sujet actuel, pas celui du debut.",
+    "Quand l'utilisateur ne nomme pas le sujet, deduis-le du travail de l'assistant",
+    "(client, produit, fonctionnalite cites).",
     "Dans le doute, reponds none : un sujet faux est pire que pas de sujet.",
     "Reponds UNIQUEMENT le numero, rien d'autre (ex: 172), ou none.",
   ].join("\n");

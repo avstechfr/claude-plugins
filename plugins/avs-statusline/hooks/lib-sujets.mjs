@@ -126,3 +126,80 @@ export function courtTitre(titre, max = 42) {
   const espace = coupe.lastIndexOf(" ");
   return (espace > max / 2 ? coupe.slice(0, espace) : coupe).trim() + "…";
 }
+
+// --- Detection du sujet dans ce que tape l'humain (v2.4.0) -----------------------------
+//
+// 14-15/10/2026, session globale Logic'S : (1) une notification du chat inter-agents
+// (« Monitor event » contenant « #225 ... logo ») est arrivee comme un PROMPT et a pose
+// « #225 Nouveau logo » en source humain, puis donne son nom de chat a la session ;
+// (2) « je devrais le voir dans ma barre en bas, dans mon Claude Code » a repose
+// « #181 Outillage agents Claude Code ». Regle desormais : on ne lit que ce que l'humain
+// a ecrit lui-meme, et seuls comptent un `#NNN` explicite ou un titre quasi complet.
+
+/** Retire du prompt tout ce qui ne vient pas de l'humain : blocs balises injectes par le
+ *  harnais (<task-notification>, <system-reminder>...), lignes du chat inter-agents,
+ *  citations (« > ... » : le texte de quelqu'un d'autre). */
+export function nettoyerPrompt(texte) {
+  return String(texte || "")
+    .replace(/<([a-z][a-z0-9_-]*)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .split("\n")
+    .filter((l) => !/\[agent-chat\]|chat inter-agents|t'interpelle/i.test(l) && !/^\s*>/.test(l))
+    .join("\n")
+    .trim();
+}
+
+/** `#133` explicite uniquement. Ni « sujet 133 » ni un nombre nu : « il y a 133
+ *  articles » ou « la 3.6.0.78 » ne doivent pas changer de sujet. */
+export function numeroDansTexte(texte) {
+  const m = String(texte || "").match(/(?:^|[^\w&#])#(\d{1,4})\b/);
+  return m ? m[1] : null;
+}
+
+// Mots trop courants pour designer un sujet a eux seuls : ils ne comptent ni dans le
+// texte ni dans les titres. « agent », « barre », « claude », « code » : c'est le
+// vocabulaire de l'outil lui-meme, present dans toutes les sessions.
+export const MOTS_GENERIQUES = new Set([
+  "claude", "code", "logic", "logics", "logic's", "caisse", "caisses", "demande", "demandes",
+  "client", "clients", "avec", "pour", "dans", "plus", "sans", "sont", "fait", "faire",
+  "suivi", "global", "projet", "produit", "application", "version", "mise", "jour",
+  "commande", "contrat", "agent", "agents", "barre", "fenetre", "session", "sessions",
+  "outil", "outils", "outillage", "nouveau", "nouvelle", "probleme", "bas",
+]);
+
+function motsSignificatifs(s) {
+  return new Set(
+    String(s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9']+/)
+      .map((m) => m.replace(/^'+|'+$/g, ""))
+      .filter((m) => m.length >= 4 && !MOTS_GENERIQUES.has(m))
+  );
+}
+
+/** Tete d'un titre : avant le premier « - », « : » ou « | », sans les parentheses
+ *  (« Balances Helmac Linux (GMB Reims) - remontee ventes... » -> « Balances Helmac Linux »). */
+export function teteDeTitre(titre) {
+  return String(titre || "")
+    .replace(/\(.*?\)/g, " ")
+    .split(/\s[-–—|]\s|:/)[0]
+    .trim();
+}
+
+/** Titre de sujet cite PRESQUE EN ENTIER (au moins 80 % des mots significatifs de sa
+ *  tete, et au moins deux mots) : « on reprend les balances Helmac Linux » pose #172,
+ *  « ma barre dans Claude Code » ne pose rien. */
+export function parTitre(texte, sujets) {
+  const dits = motsSignificatifs(texte);
+  if (dits.size === 0) return null;
+  let meilleur = null;
+  for (const s of sujets || []) {
+    const cibles = [...motsSignificatifs(teteDeTitre(s.title))];
+    if (cibles.length < 2) continue;
+    const communs = cibles.filter((m) => dits.has(m)).length;
+    if (communs < 2 || communs / cibles.length < 0.8) continue;
+    if (!meilleur || communs > meilleur.score) meilleur = { s, score: communs };
+  }
+  return meilleur ? `#${meilleur.s.number} ${courtTitre(meilleur.s.title)}` : null;
+}

@@ -25,8 +25,30 @@ export function mentionne(texte, nom) {
   return new RegExp(`(^|[^a-z0-9_-])@${echapper(nom)}${fin}`, "i").test(t);
 }
 
+/** Ligne d'en-tete posee par chat_send (v2.6.0) : « de <nom> ». Elle dit qui parle dans
+ *  le corps meme du message, a la place des signatures manuelles (« — de formules-pad »)
+ *  qui ne correspondaient pas au nom reel de l'expediteur. */
+const ENTETE = /^de [a-z0-9][a-z0-9_-]*[ \t]*\r?\n/i;
+// Signatures manuelles qu'on retire a l'envoi : « @x - de `nom`. » en tete, « — de nom »
+// en derniere ligne. Volontairement etroit : un tiret de liste ordinaire n'est pas visé.
+const SIGNATURE_TETE = /^((?:@[a-z0-9_-]+[\s,]*)+)[—–-]\s*de\s+(?:l'agent\s+)?`[a-z0-9_-]+`\s*[.:]?\s*/i;
+const SIGNATURE_FIN = /\n[ \t]*(?:[—–]|--)[ \t]*de[ \t]+[`*_]*[a-z0-9_-]+[`*_]*[ \t]*\.?[ \t]*$/i;
+
+export function sansEntete(texte) {
+  return String(texte || "").replace(ENTETE, "");
+}
+
+/** Corps tel qu'il part sur le chat : en-tete « de <nom> » + message sans signature. */
+export function avecEntete(texte, nom) {
+  const corps = sansEntete(String(texte || "").trim())
+    .replace(SIGNATURE_TETE, "$1")
+    .replace(SIGNATURE_FIN, "")
+    .trim();
+  return `de ${nom}\n${corps}`;
+}
+
 function normaliser(texte) {
-  return String(texte || "")
+  return sansEntete(texte)
     .toLowerCase()
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -105,7 +127,7 @@ export function decider(m, { nom, historique = [], journal = {}, maintenant = Da
 
 /** La ligne emise (une seule, autoportante : c'est elle qui reveille l'agent). */
 export function ligneReveil(m, nom, maxCars = 160) {
-  const texte = String(m.message || "").replace(/\s+/g, " ").trim();
+  const texte = sansEntete(m.message).replace(/\s+/g, " ").trim();
   const debut = texte.length > maxCars ? texte.slice(0, maxCars) + "…" : texte;
   return (
     `[agent-chat] ${m.sender} t'interpelle (tu es ${nom}, salon ${m.room || "default"}) : ` +
