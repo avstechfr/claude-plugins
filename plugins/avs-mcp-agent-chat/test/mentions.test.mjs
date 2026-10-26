@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mentionne,
+  mentionneTous,
   estAccuse,
   contientDemande,
   estSimpleReponse,
@@ -12,11 +13,14 @@ import {
   sansEntete,
 } from "../hooks/mentions.mjs";
 
-test("mentionne : nom exact, @tous, @all", () => {
+test("mentionne : nom exact uniquement ; @tous / @all ne comptent plus (v2.7.0)", () => {
   assert.ok(mentionne("@balances-helmac tu peux regarder ?", "balances-helmac"));
   assert.ok(mentionne("Salut @Balances-Helmac", "balances-helmac"));
-  assert.ok(mentionne("@tous : livraison a 14 h", "x"));
-  assert.ok(mentionne("info pour @all", "x"));
+  assert.ok(!mentionne("@tous : livraison a 14 h", "x"));
+  assert.ok(!mentionne("info pour @all", "x"));
+  assert.ok(mentionneTous("@tous : livraison a 14 h"));
+  assert.ok(mentionneTous("info pour @all"));
+  assert.ok(!mentionneTous("@toussaint"));
   assert.ok(!mentionne("rien pour toi", "balances-helmac"));
   assert.ok(!mentionne("mail a balances-helmac@avs.fr", "avs"));
 });
@@ -102,4 +106,18 @@ test("en-tete automatique : ne fausse ni les accuses ni les demandes", () => {
 test("ligne de reveil : sans l'en-tete", () => {
   const l = ligneReveil({ sender: "alice", room: "default", message: "de alice\n@bob tu peux ?" }, "bob");
   assert.match(l, /« @bob tu peux \? »/);
+});
+
+test("decider : @tous ne reveille personne (v2.7.0)", () => {
+  const m = { id: "1", sender: "alice", room: "default", message: "@tous point a 15 h, qui est dispo ?" };
+  assert.deepEqual(decider(m, { nom: "bob" }), { reveil: false, raison: "tous-sans-reveil" });
+  // ...mais un @tous qui nomme aussi l'agent le reveille
+  const m2 = { ...m, message: "@tous et surtout @bob : point a 15 h ?" };
+  assert.equal(decider(m2, { nom: "bob" }).reveil, true);
+});
+
+test("ligneReveil : consigne de silence si le message ne concerne pas l'agent", () => {
+  const l = ligneReveil({ sender: "alice", room: "default", message: "@bob regarde" }, "bob");
+  assert.match(l, /n'ecris RIEN a ton humain/);
+  assert.ok(l.length < 400);
 });

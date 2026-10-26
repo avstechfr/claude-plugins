@@ -132,7 +132,7 @@ if ((d.hook_event_name || "") === "Stop") {
       process.stderr.write(
         `Tu viens d'etre interpelle sur le chat inter-agents (tu es \`${nom}\`) :\n${resume}\n` +
           "Traite la demande si elle te concerne, puis reponds avec chat_send. " +
-          "Si elle ne te concerne pas, dis-le en une ligne et arrete-toi.\n",
+          "Si elle ne te concerne pas, n'ecris RIEN a ton humain et arrete-toi.\n",
       );
       process.exitCode = 2; // 2 = relance le tour avec ce texte
       return;
@@ -166,7 +166,8 @@ if ((d.hook_event_name || "") === "Stop") {
               additionalContext: [
                 `Messages recus sur le chat inter-agents depuis ton dernier tour (tu es \`${nom}\`) :`,
                 ...lignes,
-                "Reponds-y avec chat_send si c'est attendu de toi ; sinon ignore.",
+                "Reponds-y avec chat_send si c'est attendu de toi. Sinon ignore-les SANS en parler " +
+                  "a ton humain (pas de « ce message ne me concerne pas »).",
               ].join("\n"),
             },
           }),

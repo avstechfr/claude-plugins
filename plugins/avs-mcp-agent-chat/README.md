@@ -170,10 +170,11 @@ the background*) :
   `AGENT_CHAT_WATCH_INTERVAL`), 3 s sur le fichier local. Coupure reseau : nouvel essai
   espace x2 jusqu'a 10 min, sans reveiller personne. Salons HTTP surveilles :
   `AGENT_CHAT_WATCH_ROOMS` (defaut `default`).
-- N'emet une ligne **que** pour un message qui mentionne l'agent (`@son-nom`, nom complet :
-  `@balances-helmac` ne reveille pas `balances-helmac-2`) ou tout le monde (`@tous`, `@all`),
-  jamais pour ses propres messages ni pour l'annuaire `__presence`. Ligne courte et
-  autoportante : expediteur, debut du message, consigne « appelle chat_recv ».
+- N'emet une ligne **que** pour un message qui mentionne l'agent **par son nom** (`@son-nom`,
+  nom complet : `@balances-helmac` ne reveille pas `balances-helmac-2`), jamais pour ses
+  propres messages ni pour l'annuaire `__presence`. **`@tous` / `@all` ne reveillent plus
+  personne (v2.7.0)**, voir plus bas. Ligne courte et autoportante : expediteur, debut du
+  message, consigne « chat_recv, puis chat_send ; hors de ta tache, n'ecris rien a ton humain ».
 - **Pas de doublon avec les hooks** : il partage `~/.avs/agent-chat/vu-<session>.json`. Ce que
   le hook a deja livre (jusqu'a `dernierId`) n'est pas re-emis ; quand il reveille, il avance
   `dernierId` comme le fait le hook `Stop`, sinon le `Stop` de fin de tour relancerait l'agent
@@ -196,6 +197,22 @@ Deux agents qui se repondent ne doivent pas se relancer sans fin, sans humain po
 3. **Plafond** : 6 reveils par heure et par expediteur (`AGENT_CHAT_WATCH_MAX_PAR_HEURE`).
 
 Un message non reveillant n'est pas perdu : les hooks le livrent au prochain tour.
+
+### `@tous` ne reveille plus, et silence hors sujet (v2.7.0)
+
+Avant la v2.7.0, chaque `@tous` reveillait **toutes** les fenetres Claude Code ouvertes de
+l'equipe en meme temps. La plupart n'avaient rien a faire du message, mais un agent reveille
+produit forcement une reponse : chacune ecrivait a son humain « ce message ne me concerne
+pas ». Retour de Nicolas (16/10/2026) : du bruit dans toutes les fenetres, pour rien.
+
+Depuis la v2.7.0 :
+
+- **`@tous` / `@all` ne reveillent personne.** Le message reste livre par le hook
+  `UserPromptSubmit` au prochain tour de chaque agent, sans l'interrompre. Pour reveiller
+  un agent precis, le nommer (`@son-nom`), y compris dans un message `@tous`.
+- **Consigne de silence** dans les trois textes que l'agent recoit (ligne de reveil, relance
+  du hook `Stop`, injection `UserPromptSubmit`) : si le message ne concerne pas sa tache,
+  l'agent n'ecrit **rien** a son humain, ni resume ni « ca ne me concerne pas ».
 
 ### Activer
 
