@@ -14,6 +14,9 @@
 // d'un tour sur deux et aurait noyé la KB. Le 1er rappel part tout de suite, les suivants au
 // plus toutes les 30 min, sauf action de production, rappelée à la fin de son tour.
 //
+// Chaque session AVS doit laisser une trace : une session interactive qui n'a encore rien
+// écrit est relancée une fois, même sans action. AVS_KB_RAPPEL_SESSION=0 le coupe sur un poste.
+//
 // EN CAS DE DOUTE, ON LAISSE PASSER : ce hook ne doit jamais casser une session.
 
 import fs from "node:fs";
@@ -116,6 +119,7 @@ export function analyser(lignes) {
   let tour = 0;
   let tourEcriture = -1;
   let derniereEcritureMs = 0;
+  let automatique = false;
   for (const ligne of lignes) {
     if (!ligne.includes('"tool_use"') && !ligne.includes('"user"')) continue;
     let entree;
@@ -124,7 +128,11 @@ export function analyser(lignes) {
     } catch {
       continue;
     }
-    if (estMessageHumain(entree)) tour += 1;
+    if (estMessageHumain(entree)) {
+      tour += 1;
+      // `claude -p` et le SDK : scripts et tâches planifiées, pas une session de travail.
+      if (String(entree.entrypoint || "").startsWith("sdk")) automatique = true;
+    }
     if (entree.type !== "assistant" || entree.isSidechain) continue;
     const blocs = entree.message?.content;
     if (!Array.isArray(blocs)) continue;
@@ -146,37 +154,54 @@ export function analyser(lignes) {
       action.tour > tourEcriture ||
       (action.tour === tourEcriture && action.ms > derniereEcritureMs + MARGE_APRES_ECRITURE_MS),
   );
-  return { enAttente, derniereEcritureMs };
+  return { enAttente, derniereEcritureMs, aEcrit: tourEcriture >= 0, tours: tour, automatique };
 }
 
 /** Le rappel à envoyer maintenant et l'état à garder, ou null s'il n'y a rien à dire. */
 export function decider(lignes, etat = {}, maintenant = Date.now()) {
-  const { enAttente, derniereEcritureMs } = analyser(lignes);
+  const { enAttente, derniereEcritureMs, aEcrit, tours, automatique } = analyser(lignes);
   // Déjà rappelé pour ces actions : l'agent a jugé, on ne boucle pas.
   const nouvelles = enAttente.filter((action) => action.rang > (etat.rangRappel || 0));
-  if (nouvelles.length === 0) return null;
-  const dernierSignalMs = Math.max(etat.rappelMs || 0, derniereEcritureMs);
-  const tropTot = maintenant - dernierSignalMs < DELAI_ENTRE_RAPPELS_MS;
-  if (tropTot && !nouvelles.some((action) => action.production)) return null;
+  const sessionAInscrire =
+    process.env.AVS_KB_RAPPEL_SESSION !== "0" && !aEcrit && !automatique && tours > 0 && !etat.rappelMs;
+  if (!sessionAInscrire) {
+    if (nouvelles.length === 0) return null;
+    const dernierSignalMs = Math.max(etat.rappelMs || 0, derniereEcritureMs);
+    const tropTot = maintenant - dernierSignalMs < DELAI_ENTRE_RAPPELS_MS;
+    if (tropTot && !nouvelles.some((action) => action.production)) return null;
+  }
   return {
-    raison: messageRappel(enAttente),
-    etat: { rangRappel: enAttente.at(-1).rang, rappelMs: maintenant },
+    raison: messageRappel(enAttente, aEcrit),
+    etat: { rangRappel: enAttente.at(-1)?.rang ?? etat.rangRappel ?? 0, rappelMs: maintenant },
   };
 }
 
-function messageRappel(enAttente) {
+function messageRappel(enAttente, aEcrit) {
   const derniers = enAttente.slice(-5).map((action) => `- ${action.libelle}`);
   const autres = enAttente.length - derniers.length;
+  const actions = derniers.length
+    ? [
+        "",
+        "Actions pas encore enregistrées :",
+        ...derniers,
+        ...(autres > 0 ? [`- (et ${autres} autres avant)`] : []),
+      ]
+    : [];
+  const entete = aEcrit
+    ? "Rappel KB : du travail n'a pas encore été enregistré dans la base de connaissances AVS."
+    : "Rappel KB : chaque session AVS doit être inscrite dans la base de connaissances, et celle-ci n'y a encore rien écrit.";
+  const sortie = aEcrit
+    ? "Si l'écriture a déjà été faite par un script, si ces actions n'apprennent rien, ou si la session est perso et hors AVS : n'écris rien dans la KB, dis-le en une ligne et arrête-toi."
+    : "Seules exceptions : une session perso, hors AVS, ne va jamais dans la KB ; une écriture déjà faite par un script ne se refait pas. Dans ces deux cas, dis-le en une ligne et arrête-toi.";
   return [
-    "Rappel KB : ces actions n'ont pas encore été enregistrées dans la base de connaissances AVS :",
-    ...derniers,
-    ...(autres > 0 ? [`- (et ${autres} autres avant)`] : []),
+    entete,
+    ...actions,
     "",
-    "Avant de t'arrêter, enregistre ce qui servira à un collègue ou à un autre agent : constat, cause, solution, état réel, ce qui reste à faire.",
+    "Avant de t'arrêter, enregistre ce qui servira à un collègue ou à un autre agent : la demande, ce qui a été fait, l'état réel, ce qui reste à faire.",
     "- kb_search d'abord : s'il existe une fiche du sujet, enrichis-la avec kb_save et son nodeId ; sinon crée-la avec kb_log.",
     "- Seulement ce qui a été vérifié, et jamais de secret.",
     "",
-    "Si l'écriture a déjà été faite par un script, si ces actions n'apprennent rien, ou si la session est perso et hors AVS : n'écris rien dans la KB, dis-le en une ligne et arrête-toi. Ce rappel ne reviendra pas pour ces actions.",
+    sortie,
   ].join("\n");
 }
 

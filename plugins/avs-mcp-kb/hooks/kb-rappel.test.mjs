@@ -131,6 +131,39 @@ test("cadence : une fiche écrite spontanément repousse le rappel suivant", () 
   assert.ok(decider(lignes, {}, T0 + 31 * MIN));
 });
 
+test("chaque session : relancée une fois, même sans action", () => {
+  const lignes = [humain("une question ?")];
+  const rappel = decider(lignes, {}, T0);
+  assert.match(rappel.raison, /chaque session AVS/);
+  assert.match(rappel.raison, /perso/);
+  assert.equal(decider(lignes, rappel.etat, T0 + 600 * MIN), null, "une seule fois");
+});
+
+test("chaque session : rien à dire si elle a déjà écrit en KB", () => {
+  assert.equal(decider([humain(), kbLog(T0)], {}, T0 + MIN), null);
+});
+
+test("chaque session : ni pour un script (claude -p), ni avant un vrai message", () => {
+  const automatique = JSON.stringify({ type: "user", entrypoint: "sdk-cli", message: { content: "classe ce sujet" } });
+  assert.equal(decider([automatique], {}, T0), null);
+  assert.equal(decider([humain("<command-name>/help</command-name>")], {}, T0), null);
+});
+
+test("chaque session : un script qui agit reste rappelé pour ses actions", () => {
+  const automatique = JSON.stringify({ type: "user", entrypoint: "sdk-cli", message: { content: "pose" } });
+  assert.ok(decider([automatique, shell("ssh a b", T0)], {}, T0 + MIN));
+});
+
+test("chaque session : AVS_KB_RAPPEL_SESSION=0 le coupe sur un poste, pas le rappel des actions", () => {
+  process.env.AVS_KB_RAPPEL_SESSION = "0";
+  try {
+    assert.equal(decider([humain("une question ?")], {}, T0), null);
+    assert.ok(decider([humain(), shell("ssh a b", T0)], {}, T0 + MIN));
+  } finally {
+    delete process.env.AVS_KB_RAPPEL_SESSION;
+  }
+});
+
 // Le hook complet, tel que le harnais le lance.
 const hook = fileURLToPath(new URL("./kb-rappel.mjs", import.meta.url));
 
@@ -153,7 +186,7 @@ test("hook complet : relance une fois par lot, puis laisse s'arrêter", () => {
   const sortie = JSON.parse(premier.stdout);
   assert.equal(sortie.decision, "block");
   assert.match(sortie.reason, /kb_log/);
-  assert.match(sortie.reason, /enregistrées/, "accents rendus à l'identique");
+  assert.match(sortie.reason, /enregistré/, "accents rendus à l'identique");
   assert.match(premier.stdout, /^[\x00-\x7e]*$/, "sortie en ASCII pur");
 
   assert.equal(lancer(home, entree).stdout, "", "pas de 2e relance pour le même lot");

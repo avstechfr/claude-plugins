@@ -17,14 +17,18 @@ liste d'outils sert de rappel, et la friction du `curl` disparaît.
 ## Rappel automatique (`hooks/kb-rappel.mjs`)
 
 À la fin d'un tour, si l'agent a agi sans rien écrire dans la KB, il est relancé une fois pour
-le faire, ou pour dire en une ligne qu'il n'y a rien à retenir (session perso comprise).
+le faire, ou pour dire en une ligne qu'il n'y a rien à retenir.
+
+**Chaque session AVS doit laisser une trace** : une session interactive qui n'a encore rien écrit
+est relancée une fois, même sans action. Une session perso n'écrit rien et le dit en une ligne ;
+`claude -p` et le SDK (scripts, tâches planifiées) ne sont relancés que pour leurs actions.
+`AVS_KB_RAPPEL_SESSION=0` (dans `env` de `settings.json`) coupe cette règle sur un poste.
 
 - **Ce qui compte comme action** : accès au parc (SSH, WinRM, adresse Tailscale), `git push`,
   PR, déploiements, écritures sur l'intranet, scripts lancés depuis `~/AVS/`, fichiers écrits
   dans `~/AVS/memory` ou `~/AVS/workspace`, sous-agents capables d'agir.
 - **Cadence** : 1er rappel tout de suite, puis au plus toutes les 30 min. Une action de
-  production (`git push`, PR, déploiement, `psql`…) est rappelée à la fin de son tour. Sur
-  212 vraies sessions rejouées : un rappel sur 19 % des tours, 1 par session en médiane.
+  production (`git push`, PR, déploiement, `psql`…) est rappelée à la fin de son tour.
 - **Une copie locale garde la main** : si `~/.claude/hooks/kb-rappel.mjs` existe, celui du
   plugin ne fait rien (pas de double relance). Retirer la copie et son entrée dans
   `settings.json` pour passer sur le plugin.
